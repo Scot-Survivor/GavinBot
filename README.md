@@ -19,3 +19,16 @@ He is able to have a huge range of different replies.
 ### Inspirations
 - The inspiration for preprocessing comes from [Sentdex](https://pythonprogramming.net/chatbot-deep-learning-python-tensorflow/)
 - The model architecture comes from [this tutorial](https://medium.com/tensorflow/a-transformer-chatbot-tutorial-with-tensorflow-2-0-88bf59e66fe2)
+
+## Funny Responses
+### Gavin - Old Test model (02/12/2020)
+- *Input: "Hello Gavin \o/"*
+- *Reply: "Get away from me"*
+
+### Gavin - Old Test model (02/12/2020)
+- *Input: "Gavin, how are you?"*
+- *Reply: "I'm going to marry Elaine Robinson"*
+
+### Gavin - Old Test model (02/12/2020)
+- *Input: "Gavin, there's an alien in our midst"*
+- *Reply: "We can get the blood type right away. Dental records will take longer"*

@@ -18,7 +18,7 @@ def connect():
 
 
 async def sql_insert_into(guild: str, channel: str, model: str, author: str, message: str, reply: str, date: str):
-    if connection is not None and cursor is not None:
+    if None not in (connection, cursor):
         sql = f"""INSERT INTO chat_logs (guild, channel, model, author, ctx, reply, date) VALUES ('{guild}', '{channel}', '{model}', '{author}', '{message}', '{reply}', '{date}')"""
         try:
             cursor.execute(sql)

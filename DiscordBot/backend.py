@@ -1,8 +1,6 @@
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import re
-import marshal
-from concurrent.futures import ThreadPoolExecutor, wait
 
 config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -49,26 +47,6 @@ def load_model(checkpoint_name):
     VOCAB_TARGET_SIZE: {TARGET_VOCAB_SIZE}
     """)
         f.close()
-
-    def load_marshal(filepath):
-        with open(filepath, 'rb') as fp:
-            return marshal.load(fp)
-
-    def load_files(file1, file2):
-        with ThreadPoolExecutor(2) as executor:
-            fut1 = executor.submit(load_marshal, file1)
-            fut2 = executor.submit(load_marshal, file2)
-            wait((fut1, fut2))
-
-            exc1 = fut1.exception()
-            if exc1 is not None:
-                raise exc1
-
-            exc2 = fut2.exception()
-            if exc2 is not None:
-                raise exc2
-
-            return fut1.result(), fut2.result()
 
     tokenizer = tfds.features.text.SubwordTextEncoder.load_from_file(f"{save_path}/tokenizer/vocabTokenizer")
 

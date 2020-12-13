@@ -1,25 +1,25 @@
-from discord.ext import commands
-from DatabaseTools import tool
-from backend import load_model, predict
-from random import choice
 import re
 import discord
 import discord.utils
 import asyncio
 import datetime as dt
 import concurrent.futures
+from discord.ext import commands
+from DatabaseTools import tool as database
+from random import choice
+from backend import load_model, predict
 
 
 # 😂
 
 class Gavin(commands.Cog):
     def __init__(self, bot: commands.Bot):
-        self.connection, self.c = tool.connect()
+        database.connect()
         self.bot = bot
         self.archive_id = 785539080062631967
         self.loading = True
         self.START_TOKEN, self.END_TOKEN, self.tokenizer, self.MAX_LENGTH, self.model, self.ModelName, self.hparams = load_model(
-            "bunchOfLogs/" + input("Please enter model: "))
+            "../bunchOfLogs/" + input("Please enter model: "))
         self.swear_words = ['cock', 'tf', 'reggin', 'bellend', 'twat',
                             'bollocks', 'wtf', 'slag', 'fucker', 'rapist',
                             'shit', 'bitch', 'minger', 'nigger', 'fking',
@@ -58,10 +58,10 @@ class Gavin(commands.Cog):
         with channel.typing():
             response = predict(content, self.tokenizer, self.swear_words, self.START_TOKEN, self.END_TOKEN,
                                self.MAX_LENGTH, self.model)
-            await tool.sql_insert_into(str(message.guild.id), str(message.channel.id), self.ModelName, message.author,
-                                       message.content, response,
-                                       date=dt.datetime.now().strftime('%d/%m/%Y %H-%M-%S.%f')[:-2],
-                                       u_connection=self.connection, cursor=self.c)
+            await database.sql_insert_into(str(message.guild.id), str(message.channel.id), self.ModelName,
+                                           message.author,
+                                           message.content, response,
+                                           date=dt.datetime.now().strftime('%d/%m/%Y %H-%M-%S.%f')[:-2])
 
             msg = f"> {content}\n {message.author.mention} {response}"
             print(f"""Date: {dt.datetime.now().strftime('%d/%m/%Y %H-%M-%S.%f')[:-2]}
@@ -110,7 +110,7 @@ Output: {response}""")
             self.loading = True
             await self.bot.change_presence(activity=discord.Game(name=f"Loading new model {model_name}"))
             with concurrent.futures.ThreadPoolExecutor(1) as executor:
-                future = executor.submit(load_model, "bunchOfLogs/" + model_name)
+                future = executor.submit(load_model, "../bunchOfLogs/" + model_name)
                 self.START_TOKEN, self.END_TOKEN, self.tokenizer, self.MAX_LENGTH, self.model, self.ModelName, self.hparams = future.result()
             self.loading = False
             await self.bot.change_presence(activity=discord.Game(name=f"Loaded into {model_name}"))

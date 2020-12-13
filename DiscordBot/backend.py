@@ -35,7 +35,7 @@ def load_model(checkpoint_name):
         hparams = [MAX_SAMPLES, MAX_LENGTH, BATCH_SIZE, BUFFER_SIZE, NUM_LAYERS, D_MODEL, NUM_HEADS, UNITS, DROPOUT,
                    VOCAB_SIZE, TARGET_VOCAB_SIZE]
         print(f"""
-    Imported Hyper Parameters from {save_path}/values/hparams.txt are these correct?
+    Imported Hyper Parameters from {save_path}/values/hparams.txt
     MAX_SAMPLES: {MAX_SAMPLES}
     MAX_LENGTH: {MAX_LENGTH}
     BATCH_SIZE: {BATCH_SIZE}

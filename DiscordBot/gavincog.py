@@ -62,9 +62,8 @@ class Gavin(commands.Cog):
                                        message.content, response,
                                        date=dt.datetime.now().strftime('%d/%m/%Y %H-%M-%S.%f')[:-2],
                                        u_connection=self.connection, cursor=self.c)
-            user = "<@!"
-            user += str(message.author.id) + ">"
-            msg = f"> {content}\n {user} {response}"
+
+            msg = f"> {content}\n {message.author.mention} {response}"
             print(f"""Date: {dt.datetime.now().strftime('%d/%m/%Y %H-%M-%S.%f')[:-2]}
 Author: {message.author}
 Where: {message.guild}:{message.channel}

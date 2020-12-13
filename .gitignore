@@ -1,0 +1,6 @@
+venv
+.idea
+cornell movie-dialogs corpus
+train.from
+train.to
+bunchOfLogs

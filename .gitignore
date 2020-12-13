@@ -1,6 +1,7 @@
 venv
 .idea
 cornell movie-dialogs corpus
+DiscordBot/.env
 train.from
 train.to
 bunchOfLogs

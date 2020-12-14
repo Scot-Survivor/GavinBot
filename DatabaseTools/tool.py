@@ -5,7 +5,6 @@ connection = None  # sqlite3.Connection
 cursor = None  # sqlite3.Cursor
 databaseName = "chatLogs.db"
 
-
 def connect():
     global connection, cursor
     existed = os.path.exists(databaseName)  # file created on .connect This is much prettier way to do this.

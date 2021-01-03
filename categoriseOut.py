@@ -1,4 +1,3 @@
-import os
 import sqlite3
 import pandas as pd
 import multiprocessing as mp
@@ -9,7 +8,7 @@ timeframes = ['2015-01', '2015-02', '2015-03', '2015-05', '2014-12', '2014-11', 
 def sort_out(time_frame, core_id):
     for t_frame in time_frame:
         connection = sqlite3.connect('D:/Datasets/reddit_data/databases/{}.db'.format(t_frame))
-        limit = 1000
+        limit = 100000
         last_unix = 0
         cur_length = limit
         counter = 0

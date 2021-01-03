@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 import numpy as np
 from datetime import datetime
-# from tensorflow.keras.utils import plot_model
+from tensorflow.keras.utils import plot_model
 from concurrent.futures import ThreadPoolExecutor, wait
 from tensorboard.plugins import projector
 from random import shuffle, randint
@@ -15,6 +15,10 @@ config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.compat.v1.Session(config=config)
 os.environ['TF_GPU_THREAD_MODE'] = "gpu_private"
+
+print(f"TensorFlow Version: {tf.__version__}")
+print(f"Numpy Version: {np.__version__}")
+print(f"Eager execution: {tf.executing_eagerly()}")
 
 path_to_dataset = "cornell movie-dialogs corpus"
 
@@ -49,6 +53,7 @@ try:
     os.mkdir(f"{log_dir}/pickles/")
     os.mkdir(f"{log_dir}/tokenizer")
     os.mkdir(f"{log_dir}/values/")
+    os.mkdir(f"{log_dir}/images/")
 except FileExistsError:
     print("Already exists not creating folders")
     pass
@@ -165,7 +170,7 @@ def file_generator(f_path):
 
 print("Loading files...")
 questions, answers = load_conversations(reddit_set_max, movie_dialog_max)
-print(f"Data size Answers: {len(answers)}\nQuestions: {len(questions)}")
+print(f"Answers: {len(answers)}\nQuestions: {len(questions)}")
 # questions, answers = sort_data(reddit_set_max)
 shuffleThis = list(zip(questions, answers))
 for x in range(randint(0, 10)):
@@ -181,11 +186,11 @@ print(f"Done saving....")
 if load == "n":
     print("Starting Tokenizer this may take a while....")
     # Build tokenizer using tfds for both questions and answers
-    tokenizer = tfds.features.text.SubwordTextEncoder.build_from_corpus(
+    tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
         questions + answers, target_vocab_size=TARGET_VOCAB_SIZE)
     tokenizer.save_to_file(f"{log_dir}/tokenizer/vocabTokenizer")
 else:
-    tokenizer = tfds.features.text.SubwordTextEncoder.load_from_file(tokenizerPath)
+    tokenizer = tfds.deprecated.text.SubwordTextEncoder.load_from_file(tokenizerPath)
     tokenizer.save_to_file(f"{log_dir}/tokenizer/vocabTokenizer")
 print("Done Tokenizer.")
 # Define start and end token to indicate the start and end of a sentence
@@ -194,38 +199,12 @@ START_TOKEN, END_TOKEN = [tokenizer.vocab_size], [tokenizer.vocab_size + 1]
 # Vocabulary size plus start and end token
 VOCAB_SIZE = tokenizer.vocab_size + 2
 
-'''
-# Tokenize, filter and pad sentences
-def tokenize_and_filter(inputs, outputs):
-    tokenized_inputs, tokenized_outputs = [], []
-    max_len = MAX_LENGTH - (len(START_TOKEN) - len(END_TOKEN))
-    for (sentence1, sentence2) in zip(inputs, outputs):
-        # Check tokenized max length
-        if len(sentence1) <= max_len and len(sentence2) <= max_len:
-            # tokenize sentence
-            sentence1 = START_TOKEN + tokenizer.encode(sentence1) + END_TOKEN
-            sentence2 = START_TOKEN + tokenizer.encode(sentence2) + END_TOKEN
-            tokenized_inputs.append(sentence1)
-            tokenized_outputs.append(sentence2)
-
-    print("Done filtering")
-    print("Padding")
-
-    # pad tokenized sentences
-    tokenized_inputs = tf.keras.preprocessing.sequence.pad_sequences(tokenized_inputs, maxlen=max_len,
-                                                                     padding='post')
-    tokenized_outputs = tf.keras.preprocessing.sequence.pad_sequences(tokenized_outputs, maxlen=max_len,
-                                                                      padding='post')
-    print("Done padding")
-    return tokenized_inputs, tokenized_outputs
-'''
-
 
 def tokenize_and_filter(inputs, outputs):
     # Get rid of any inputs/outputs that don't meet the max_length requirement (save the model training on large sentences
     new_inputs, new_outputs = [], []
     for i, (sentence1, sentence2) in enumerate(zip(inputs, outputs)):
-        if len(sentence1) <= MAX_LENGTH - 2 and len(sentence2) <= MAX_LENGTH -2 :
+        if len(sentence1) <= MAX_LENGTH - 2 and len(sentence2) <= MAX_LENGTH - 2:
             new_inputs.append(sentence1)
             new_outputs.append(sentence2)
     inputs, outputs = new_inputs, new_outputs
@@ -245,14 +224,14 @@ def tokenize_and_filter(inputs, outputs):
         tokenized_sentence1 = tokenizer.encode(sentence1)
         tokenized_sentence2 = tokenizer.encode(sentence2)
         # This check length doesn't technically matter but its here as a fail safe.
-        if len(tokenized_sentence1) <= MAX_LENGTH -2 and len(tokenized_sentence2) <= MAX_LENGTH -2:
+        if len(tokenized_sentence1) <= MAX_LENGTH - 2 and len(tokenized_sentence2) <= MAX_LENGTH - 2:
             # Add the tokenized sentence into array.
             # This acts as padding for hte
-            inputs_array[i, 1:len(tokenized_sentence1)+1] = tokenized_sentence1
-            inputs_array[i, len(tokenized_sentence1)+1] = END_TOKEN[0]
+            inputs_array[i, 1:len(tokenized_sentence1) + 1] = tokenized_sentence1
+            inputs_array[i, len(tokenized_sentence1) + 1] = END_TOKEN[0]
 
-            outputs_array[i, 1:len(tokenized_sentence2)+1] = tokenized_sentence2
-            inputs_array[i, len(tokenized_sentence2)+1] = END_TOKEN[0]
+            outputs_array[i, 1:len(tokenized_sentence2) + 1] = tokenized_sentence2
+            inputs_array[i, len(tokenized_sentence2) + 1] = END_TOKEN[0]
 
     return inputs_array, outputs_array
 
@@ -712,7 +691,12 @@ with open(f"{log_dir}/values/hparams.txt", "w", encoding="utf8") as f:
     f.write(data)
     f.close()
 
-# plot_model(model, f"{log_dir}/images/combined_{ModelName}.png", expand_nested=True, show_shapes=True)
+try:
+    plot_model(model, f"{log_dir}/images/{name}_Image.png", expand_nested=True, show_shapes=True)
+except Exception as e:
+    with open(f"{log_dir}/images/{name}_Image_Error.txt", "w") as f:
+        f.write(f"Image error: {e}")
+        print(f"Image error: {e}")
 cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch="510, 520",
                                                       update_freq='epoch')

@@ -48,7 +48,7 @@ def load_model(checkpoint_name):
     """)
         f.close()
 
-    tokenizer = tfds.features.text.SubwordTextEncoder.load_from_file(f"{save_path}/tokenizer/vocabTokenizer")
+    tokenizer = tfds.deprecated.text.SubwordTextEncoder.load_from_file(f"{save_path}/tokenizer/vocabTokenizer")
 
     # Define start and end token to indicate the start and end of a sentence
     START_TOKEN, END_TOKEN = [tokenizer.vocab_size], [tokenizer.vocab_size + 1]

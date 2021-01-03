@@ -5,7 +5,10 @@ import sys
 import bz2
 
 timeFrame = sys.argv[1]
-last_utc = sys.argv[2]
+try:
+    last_utc = sys.argv[2]
+except IndexError:
+    last_utc = 0
 sql_transaction = []
 
 connection = sqlite3.connect(f'D:/Datasets/reddit_data/databases/{timeFrame}.db')

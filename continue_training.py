@@ -9,9 +9,12 @@ from concurrent.futures import ThreadPoolExecutor, wait
 config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.compat.v1.Session(config=config)
-tf.compat.v1.set_random_seed(1234)
+
 os.environ['TF_GPU_THREAD_MODE'] = "gpu_private"
 
+print(f"TensorFlow Version: {tf.__version__}")
+print(f"Numpy Version: {np.__version__}")
+print(f"Eager execution: {tf.executing_eagerly()}")
 
 print(f"Using Tensorflow version {tf.__version__}")
 checkpoint_name = str(input("Please enter the directory for the checkpoint NO SPACES: "))
@@ -84,11 +87,11 @@ print("Done importing")
 
 answer = input("Would you like to load the tokenizer? y/n\n>")
 if answer == "y":
-    tokenizer = tfds.features.text.SubwordTextEncoder.load_from_file(f"{log_dir}/tokenizer/vocabTokenizer")
+    tokenizer = tfds.deprecated.text.SubwordTextEncoder.load_from_file(f"{log_dir}/tokenizer/vocabTokenizer")
 else:
     print("Starting Tokenizer this may take a while....")
     # Build tokenizer using tfds for both questions and answers
-    tokenizer = tfds.features.text.SubwordTextEncoder.build_from_corpus(
+    tokenizer = tfds.deprecatedTest.text.SubwordTextEncoder.build_from_corpus(
         questions + answers, target_vocab_size=TARGET_VOCAB_SIZE)
     VOCAB_SIZE = tokenizer.vocab_size + 2
 print("Done Tokenizer.")
@@ -114,7 +117,7 @@ def tokenize_and_filter(inputs, outputs):
     # Get rid of any inputs/outputs that don't meet the max_length requirement (save the model training on large sentences
     new_inputs, new_outputs = [], []
     for i, (sentence1, sentence2) in enumerate(zip(inputs, outputs)):
-        if len(sentence1) <= MAX_LENGTH - 2 and len(sentence2) <= MAX_LENGTH -2 :
+        if len(sentence1) <= MAX_LENGTH - 2 and len(sentence2) <= MAX_LENGTH - 2:
             new_inputs.append(sentence1)
             new_outputs.append(sentence2)
     inputs, outputs = new_inputs, new_outputs
@@ -268,6 +271,10 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         outputs = self.dense(concat_attention)
 
         return outputs
+
+    def get_config(self):
+        cfg = super().get_config()
+        return cfg
 
 
 def create_padding_mask(x):

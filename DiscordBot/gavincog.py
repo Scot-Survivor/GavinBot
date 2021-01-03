@@ -81,12 +81,12 @@ Output: {response}""")
             def check(r, u):
                 return r, u
 
-            try:
+            try:  # TODO Fix this logic
                 u_reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
             except asyncio.TimeoutError:
                 return
             else:
-                if u_reaction.emoji == "😂" and user != self.bot.user and user != sent.author:
+                if u_reaction.emoji == "😂" and user != sent.author:
                     archive_channel = discord.utils.get(message.guild.text_channels, id=self.archive_id)
                     await archive_channel.send(msg)
                     await channel.send("Added to archives!")
@@ -106,6 +106,7 @@ Output: {response}""")
 
     @commands.command(name="reload", aliases=['r'])
     async def reload_model(self, ctx: commands.Context, model_name):
+        """Reloads the model. !reload <model name>. Alias: r"""
         if ctx.message.author.id == 348519271460110338:
             self.loading = True
             await self.bot.change_presence(activity=discord.Game(name=f"Loading new model {model_name}"))
@@ -114,6 +115,17 @@ Output: {response}""")
                 self.START_TOKEN, self.END_TOKEN, self.tokenizer, self.MAX_LENGTH, self.model, self.ModelName, self.hparams = future.result()
             self.loading = False
             await self.bot.change_presence(activity=discord.Game(name=f"Loaded into {model_name}"))
+
+    @commands.command(name="image", aliases=['img', 'im'])
+    async def send_image(self, ctx: commands.Context):
+        """Send the image of what the models Layers look like. Alias: img and im"""
+        try:
+            with open(f"../bunchOfLogs/{self.ModelName}/images/{self.ModelName}_Image.png", "rb") as f:
+                picture = discord.File(f)
+        except Exception as e:
+            await ctx.send(f"Error on image send: {e}")
+        else:
+            await ctx.send(file=picture)
 
 
 def setup(bot):

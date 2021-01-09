@@ -3,13 +3,14 @@ import re
 import marshal
 import itertools
 
-import tensorflow as tf
-import tensorflow_datasets as tfds
+if __name__ == "__main__":
+    import tensorflow as tf
+    import tensorflow_datasets as tfds
+    from tensorflow.keras.utils import plot_model
+    from concurrent.futures import ThreadPoolExecutor, wait
+    from tensorboard.plugins import projector
 import numpy as np
 from datetime import datetime
-from tensorflow.keras.utils import plot_model
-from concurrent.futures import ThreadPoolExecutor, wait
-from tensorboard.plugins import projector
 from random import shuffle, randint
 from multiprocessing import Pool
 from functools import partial
@@ -234,13 +235,13 @@ def check_length(m_length, train_data):
 
 def tokenize(m_length, s_token, e_token, u_tokenizer, train_data):
     # Init the shapes for the arrays
-    shape_inputs = (len(train_data[0]), m_length)
-    shape_outputs = (len(train_data[1]), m_length)
+    shape_inputs = (len(train_data), m_length)
+    shape_outputs = (len(train_data), m_length)
     # Create empty arrays
     # Add the Start token at the start of all rows
-    inputs_array = np.zeros(shape=shape_inputs)
+    inputs_array = np.zeros(shape=shape_inputs, dtype=np.float32)
     inputs_array[:, 0] = s_token[0]
-    outputs_array = np.zeros(shape=shape_outputs)
+    outputs_array = np.zeros(shape=shape_outputs, dtype=np.float32)
     outputs_array[:, 0] = s_token[0]
 
     # Iterate over each sentence in both inputs and outputs
@@ -286,10 +287,10 @@ def tokenize_and_filter(inputs, outputs):
     p.close()
 
     inputs_array = np.concatenate((process_outputs[0]['inputs'], process_outputs[2]['inputs'],
-                                   process_outputs[1]['inputs'], process_outputs[3]['inputs']), axis=-1)
+                                   process_outputs[1]['inputs'], process_outputs[3]['inputs']))
 
     outputs_array = np.concatenate((process_outputs[0]['outputs'], process_outputs[2]['outputs'],
-                                    process_outputs[1]['outputs'], process_outputs[3]['outputs']), axis=-1)
+                                    process_outputs[1]['outputs'], process_outputs[3]['outputs']))
 
     return inputs_array, outputs_array
 
@@ -355,59 +356,60 @@ def scaled_dot_product_attention(query, key, value, mask):
     return output
 
 
-# noinspection PyMethodOverriding,PyShadowingNames
-class MultiHeadAttention(tf.keras.layers.Layer):
+if __name__ == "__main__":
+    # noinspection PyMethodOverriding,PyShadowingNames
+    class MultiHeadAttention(tf.keras.layers.Layer):
 
-    def __init__(self, d_model, num_heads, name="multi_head_attention"):
-        super(MultiHeadAttention, self).__init__(name=name)
-        self.num_heads = num_heads
-        self.d_model = d_model
+        def __init__(self, d_model, num_heads, name="multi_head_attention"):
+            super(MultiHeadAttention, self).__init__(name=name)
+            self.num_heads = num_heads
+            self.d_model = d_model
 
-        assert d_model % self.num_heads == 0
+            assert d_model % self.num_heads == 0
 
-        self.depth = d_model // self.num_heads
+            self.depth = d_model // self.num_heads
 
-        self.query_dense = tf.keras.layers.Dense(units=d_model)
-        self.key_dense = tf.keras.layers.Dense(units=d_model)
-        self.value_dense = tf.keras.layers.Dense(units=d_model)
+            self.query_dense = tf.keras.layers.Dense(units=d_model)
+            self.key_dense = tf.keras.layers.Dense(units=d_model)
+            self.value_dense = tf.keras.layers.Dense(units=d_model)
 
-        self.dense = tf.keras.layers.Dense(units=d_model)
+            self.dense = tf.keras.layers.Dense(units=d_model)
 
-    def split_heads(self, inputs, batch_size):
-        inputs = tf.reshape(
-            inputs, shape=(batch_size, -1, self.num_heads, self.depth))
-        return tf.transpose(inputs, perm=[0, 2, 1, 3])
+        def split_heads(self, inputs, batch_size):
+            inputs = tf.reshape(
+                inputs, shape=(batch_size, -1, self.num_heads, self.depth))
+            return tf.transpose(inputs, perm=[0, 2, 1, 3])
 
-    def call(self, inputs):
-        query, key, value, mask = inputs['query'], inputs['key'], inputs['value'], inputs['mask']
-        batch_size = tf.shape(query)[0]
+        def call(self, inputs):
+            query, key, value, mask = inputs['query'], inputs['key'], inputs['value'], inputs['mask']
+            batch_size = tf.shape(query)[0]
 
-        # linear layers
-        query = self.query_dense(query)
-        key = self.key_dense(key)
-        value = self.value_dense(value)
+            # linear layers
+            query = self.query_dense(query)
+            key = self.key_dense(key)
+            value = self.value_dense(value)
 
-        # split heads
-        query = self.split_heads(query, batch_size)
-        key = self.split_heads(key, batch_size)
-        value = self.split_heads(value, batch_size)
+            # split heads
+            query = self.split_heads(query, batch_size)
+            key = self.split_heads(key, batch_size)
+            value = self.split_heads(value, batch_size)
 
-        # scaled dot-production attention
-        scaled_attention = scaled_dot_product_attention(query, key, value, mask)
+            # scaled dot-production attention
+            scaled_attention = scaled_dot_product_attention(query, key, value, mask)
 
-        scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])
+            scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])
 
-        # concatenation of heads
-        concat_attention = tf.reshape(scaled_attention, (batch_size, -1, self.d_model))
+            # concatenation of heads
+            concat_attention = tf.reshape(scaled_attention, (batch_size, -1, self.d_model))
 
-        # final linear layer
-        outputs = self.dense(concat_attention)
+            # final linear layer
+            outputs = self.dense(concat_attention)
 
-        return outputs
+            return outputs
 
-    def get_config(self):
-        cfg = super().get_config()
-        return cfg
+        def get_config(self):
+            cfg = super().get_config()
+            return cfg
 
 
 # noinspection PyShadowingNames
@@ -425,37 +427,38 @@ def create_look_ahead_mask(x):
     return tf.maximum(look_ahead_mask, padding_mask)
 
 
-# noinspection PyMethodOverriding,PyMethodMayBeStatic
-class PositionalEncoding(tf.keras.layers.Layer):
+if __name__ == "__main__":
+    # noinspection PyMethodOverriding,PyMethodMayBeStatic
+    class PositionalEncoding(tf.keras.layers.Layer):
 
-    def __init__(self, position, d_model):
-        super(PositionalEncoding, self).__init__()
-        self.pos_encoding = self.positional_encoding(position, d_model=d_model)
+        def __init__(self, position, d_model):
+            super(PositionalEncoding, self).__init__()
+            self.pos_encoding = self.positional_encoding(position, d_model=d_model)
 
-    def get_angles(self, position, i, d_model):
-        angles = 1 / tf.pow(tf.cast(10000, tf.float32), (2 * (i // 2)) / tf.cast(d_model, tf.float32))
-        return position * angles
+        def get_angles(self, position, i, d_model):
+            angles = 1 / tf.pow(tf.cast(10000, tf.float32), (2 * (i // 2)) / tf.cast(d_model, tf.float32))
+            return position * angles
 
-    def positional_encoding(self, position, d_model):
-        angle_rads = self.get_angles(
-            position=tf.range(position, dtype=tf.float32)[:, tf.newaxis],
-            i=tf.range(d_model, dtype=tf.float32)[tf.newaxis, :], d_model=d_model)
+        def positional_encoding(self, position, d_model):
+            angle_rads = self.get_angles(
+                position=tf.range(position, dtype=tf.float32)[:, tf.newaxis],
+                i=tf.range(d_model, dtype=tf.float32)[tf.newaxis, :], d_model=d_model)
 
-        # apply sin to even index in the array
-        sines = tf.math.sin(angle_rads[:, 0::2])
-        # apply cos to odd index in the array
-        cosines = tf.math.cos(angle_rads[:, 1::2])
+            # apply sin to even index in the array
+            sines = tf.math.sin(angle_rads[:, 0::2])
+            # apply cos to odd index in the array
+            cosines = tf.math.cos(angle_rads[:, 1::2])
 
-        pos_encoding = tf.concat([sines, cosines], axis=-1)
-        pos_encoding = pos_encoding[tf.newaxis, ...]
-        return tf.cast(pos_encoding, tf.float32)
+            pos_encoding = tf.concat([sines, cosines], axis=-1)
+            pos_encoding = pos_encoding[tf.newaxis, ...]
+            return tf.cast(pos_encoding, tf.float32)
 
-    def call(self, inputs):
-        return inputs + self.pos_encoding[:, :tf.shape(inputs)[1], :]
+        def call(self, inputs):
+            return inputs + self.pos_encoding[:, :tf.shape(inputs)[1], :]
 
-    def get_config(self):
-        cfg = super().get_config()
-        return cfg
+        def get_config(self):
+            cfg = super().get_config()
+            return cfg
 
 
 # noinspection PyTypeChecker,PyShadowingNames
@@ -666,32 +669,32 @@ def predict(sentence):
     return predicated_sentence
 
 
-# noinspection PyAbstractClass,PyShadowingNames
-class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
-
-    def __init__(self, d_model, warmup_steps=4000):
-        super(CustomSchedule, self).__init__()
-
-        self.d_model = d_model
-        self.d_model = tf.cast(self.d_model, tf.float32)
-
-        self.warmup_steps = warmup_steps
-
-    def __call__(self, step):
-        arg1 = tf.math.rsqrt(step)
-        arg2 = step * (self.warmup_steps ** -1.5)
-
-        return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
-
-    def get_config(self):
-        config = {
-            'd_model': self.d_model,
-            'warmup_steps': self.warmup_steps
-        }
-        return config
-
-
 if __name__ == "__main__":
+    # noinspection PyAbstractClass,PyShadowingNames
+    class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+
+        def __init__(self, d_model, warmup_steps=4000):
+            super(CustomSchedule, self).__init__()
+
+            self.d_model = d_model
+            self.d_model = tf.cast(self.d_model, tf.float32)
+
+            self.warmup_steps = warmup_steps
+
+        def __call__(self, step):
+            arg1 = tf.math.rsqrt(step)
+            arg2 = step * (self.warmup_steps ** -1.5)
+
+            return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
+
+        def get_config(self):
+            config = {
+                'd_model': self.d_model,
+                'warmup_steps': self.warmup_steps
+            }
+            return config
+
+
     learning_rate = CustomSchedule(D_MODEL)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)

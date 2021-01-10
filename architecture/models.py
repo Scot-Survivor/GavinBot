@@ -1,10 +1,10 @@
 from abc import ABC
 
 import tensorflow as tf
-from layers import PositionalEncoding, MultiHeadAttention
+from architecture.custom_layers.layers import PositionalEncoding, MultiHeadAttention
 
 
-class Transformer(tf.keras.Model, ABC):
+class Transformer:
     """Transformer Model
 
     Based off paper: https://arxiv.org/pdf/1706.03762.pdf
@@ -41,18 +41,17 @@ class Transformer(tf.keras.Model, ABC):
         self._model_name = name
 
         inputs = tf.keras.Input(shape=(None,), name="inputs")
-        dec_inputs = tf.keras.Input(shape=(None,), name='dec_inputs')
+        dec_inputs = tf.keras.Input(shape=(None,), name="dec_inputs")
 
         enc_padding_mask = tf.keras.layers.Lambda(self.create_padding_mask, output_shape=(1, 1, None),
                                                   name="enc_padding_mask")(inputs)
-
         # mask the future tokens for decoder inputs at the 1st attention block
         look_ahead_mask = tf.keras.layers.Lambda(self.create_look_ahead_mask, output_shape=(1, None, None),
                                                  name="look_ahead_mask")(dec_inputs)
 
         # mask the encoder outputs for the 2nd attention block
         dec_padding_mask = tf.keras.layers.Lambda(self.create_padding_mask, output_shape=(1, 1, None),
-                                                  name="dec_padding_mask")
+                                                  name='dec_padding_mask')(inputs)
 
         enc_outputs = self.encoder()(inputs=[inputs, enc_padding_mask])
 
@@ -60,9 +59,13 @@ class Transformer(tf.keras.Model, ABC):
 
         outputs = tf.keras.layers.Dense(units=vocab_size, name="outputs")(dec_outputs)
 
-        super(Transformer, self).name = name
-        super(Transformer, self).inputs = inputs
-        super(Transformer, self).outputs = outputs
+        # super(Transformer, self).name = name
+        # super(Transformer, self).inputs = inputs
+        # super(Transformer, self).outputs = outputs
+        self.model = tf.keras.Model(inputs=[inputs, dec_inputs], outputs=outputs, name=name)
+
+    def return_model(self):
+        return self.model
 
     def encoder_layer(self, name="encoder_layer"):
         """Encoder Layer
@@ -70,26 +73,22 @@ class Transformer(tf.keras.Model, ABC):
             :arg name: str
                 The name for the layer, returned in model.summary()
         """
-        inputs = tf.keras.Input(shape=(None, self.d_model), name='inputs')  # Inputs for the layer
-        padding_mask = tf.keras.Input(shape=(1, 1, None), name="padding_mask")  # Input padding mask
+        inputs = tf.keras.Input(shape=(None, self.d_model), name="inputs")
+        padding_mask = tf.keras.Input(shape=(1, 1, None), name="padding_mask")
 
         attention = MultiHeadAttention(self.d_model, self.num_heads, name="attention")({
             'query': inputs,
             'key': inputs,
             'value': inputs,
             'mask': padding_mask
-        })  # Attention Layer
+        })
+        attention = tf.keras.layers.Dropout(rate=self.dropout)(attention)
+        attention = tf.keras.layers.LayerNormalization(epsilon=1e-6)(inputs + attention)
 
-        attention = tf.keras.layers.Dropout(rate=self.dropout)(attention)  # Add dropout to the layer
-        attention = tf.keras.layers.LayerNormalization(epsilon=1e-6)(
-            inputs + attention)  # Normalise the inputs and attention values
-
-        # This generates the feedforward part of the encoder
-        outputs = tf.keras.layers.Dense(units=self.units, attention='relu')(attention)
+        outputs = tf.keras.layers.Dense(units=self.units, activation='relu')(attention)
         outputs = tf.keras.layers.Dense(units=self.d_model)(outputs)
-        outputs = tf.keras.layers.Dense(units=self.d_model)(outputs)
-        outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(
-            attention + outputs)  # Normalise the attention and output values
+        outputs = tf.keras.layers.Dropout(rate=self.dropout)(outputs)
+        outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(attention + outputs)
 
         return tf.keras.Model(inputs=[inputs, padding_mask], outputs=outputs, name=name)
 

@@ -7,7 +7,7 @@ if __name__ == "__main__":
     import tensorflow as tf
     import tensorflow_datasets as tfds
     from tensorflow.keras.utils import plot_model
-    from concurrent.futures import ThreadPoolExecutor, wait, ProcessPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, wait
     from tensorboard.plugins import projector
     from architecture.models import Transformer
 import numpy as np
@@ -15,6 +15,7 @@ from datetime import datetime
 from random import shuffle, randint
 from multiprocessing import Pool
 from functools import partial
+from collections import Iterable
 
 #  INIT all the variables to avoid "can be undefined" errors.
 path_to_dataset = path_to_movie_conversations = path_to_movie_lines = questions = answers = dataset_train = dataset_val = None
@@ -55,9 +56,7 @@ if __name__ == "__main__":
     tokenizerPath = None
     if load == "y":
         tokenizerPath = input("Please enter the path the tokenizer: ")
-    cores = int(input("How many processes would you like to use for Data Preprocessing?: "))
-    while cores > os.cpu_count():
-        cores = int(input(f"Please enter a valid process count no larger than {os.cpu_count()}: "))
+    cores = 4
     TARGET_VOCAB_SIZE = 2 ** 14
 
     checkpoint_path = f"{log_dir}/cp.ckpt"
@@ -182,6 +181,30 @@ def file_generator(f_path):
             yield line
 
 
+def chunk(lst, count):  # Make a list into N number of lists
+    size = len(lst) // count  # figure out the size of them all
+    for i in range(0, count):
+        s = slice(i * size, None if i == count - 1 else (
+                                                                i + 1) * size)  # Using slice here because you can't store 2:3 as a variable
+        yield lst[s]  # Yield the list
+
+
+def preprocess_process(sentences):
+    outputs = []
+    for sentence in sentences:
+        outputs.append(preprocess_sentence(sentence))
+    return outputs
+
+
+def flatten(lis):
+    for item in lis:
+        if isinstance(item, Iterable) and not isinstance(item, str):
+            for x in flatten(item):
+                yield x
+        else:
+            yield item
+
+
 if __name__ == "__main__":
     print("Loading files...")
     questions, answers = load_conversations(reddit_set_max, movie_dialog_max)
@@ -192,6 +215,24 @@ if __name__ == "__main__":
         shuffle(shuffleThis)
     questions, answers = zip(*shuffleThis)
     print("Done loading...")
+    print("Starting Regex....")
+    generator_q = chunk(questions, cores)
+    generator_a = chunk(answers, cores)
+    lists_q = [next(generator_q) for _ in range(cores)]
+    lists_a = [next(generator_a) for _ in range(cores)]
+    p = Pool(cores)
+    process_outputs = p.map(preprocess_process, lists_q)
+    p.close()
+
+    questions = list(flatten(process_outputs))
+
+    p = Pool(cores)
+    process_outputs = p.map(preprocess_process, lists_a)
+    p.close()
+    del lists_q, lists_a, generator_a, generator_q
+
+    answers = list(flatten(process_outputs))
+    print("Finished Regex")
     print(f"Pickling Questions and answers for {name}")
     questionsMarshal = f"{log_dir}/pickles/{name}_questions.marshal"
     answersMarshal = f"{log_dir}/pickles/{name}_answers.marshal"
@@ -213,14 +254,6 @@ if __name__ == "__main__":
 
     # Vocabulary size plus start and end token
     VOCAB_SIZE = tokenizer.vocab_size + 2
-
-
-def chunk(lst, count):  # Make a list into N number of lists
-    size = len(lst) // count  # figure out the size of them all
-    for i in range(0, count):
-        s = slice(i * size, None if i == count - 1 else (
-                                                                i + 1) * size)  # Using slice here because you can't store 2:3 as a variable
-        yield lst[s]  # Yield the list
 
 
 # Function the process will be mapped to
@@ -271,12 +304,12 @@ def tokenize_and_filter(inputs, outputs):
 
     p = Pool(processes=cores)
     lists = [next(data_gen) for _ in range(cores)]
-    process_outputs = p.map(partial_iter, lists)
+    _process_outputs = p.map(partial_iter, lists)
     p.close()
-    inputs = list(itertools.chain(process_outputs[0]['inputs'], process_outputs[2]['inputs'],
-                                  process_outputs[1]['inputs'], process_outputs[3]['inputs']))
-    outputs = list(itertools.chain(process_outputs[0]['outputs'], process_outputs[2]['outputs'],
-                                   process_outputs[1]['outputs'], process_outputs[3]['outputs']))
+    inputs = list(itertools.chain(_process_outputs[0]['inputs'], _process_outputs[2]['inputs'],
+                                  _process_outputs[1]['inputs'], _process_outputs[3]['inputs']))
+    outputs = list(itertools.chain(_process_outputs[0]['outputs'], _process_outputs[2]['outputs'],
+                                   _process_outputs[1]['outputs'], _process_outputs[3]['outputs']))
 
     training_data = list(zip(inputs, outputs))
     data_gen = chunk(training_data, cores)
@@ -284,14 +317,14 @@ def tokenize_and_filter(inputs, outputs):
     partial_iter = partial(tokenize, MAX_LENGTH, START_TOKEN, END_TOKEN, tokenizer)
     p = Pool(processes=cores)
     lists = [next(data_gen) for _ in range(cores)]
-    process_outputs = p.map(partial_iter, lists)
+    _process_outputs = p.map(partial_iter, lists)
     p.close()
 
-    inputs_array = np.concatenate((process_outputs[0]['inputs'], process_outputs[2]['inputs'],
-                                   process_outputs[1]['inputs'], process_outputs[3]['inputs']))
+    inputs_array = np.concatenate((_process_outputs[0]['inputs'], _process_outputs[2]['inputs'],
+                                   _process_outputs[1]['inputs'], _process_outputs[3]['inputs']))
 
-    outputs_array = np.concatenate((process_outputs[0]['outputs'], process_outputs[2]['outputs'],
-                                    process_outputs[1]['outputs'], process_outputs[3]['outputs']))
+    outputs_array = np.concatenate((_process_outputs[0]['outputs'], _process_outputs[2]['outputs'],
+                                    _process_outputs[1]['outputs'], _process_outputs[3]['outputs']))
 
     return inputs_array, outputs_array
 
@@ -335,17 +368,19 @@ if __name__ == "__main__":
     dataset_val = dataset_val.batch(BATCH_SIZE)
     dataset_val = dataset_val.prefetch(tf.data.experimental.AUTOTUNE)
     print("Done Dataset shuffling, batching and prefetch")
+    del questions, answers
 
     mirrored_strategy = tf.distribute.MirroredStrategy()
 
     with mirrored_strategy.scope():
-        model = Transformer(
+        transformer = Transformer(
             vocab_size=VOCAB_SIZE,
             num_layers=NUM_LAYERS,
             units=UNITS,
             d_model=D_MODEL,
             num_heads=NUM_HEADS,
             dropout=DROPOUT)
+        model = transformer.return_model()
 
 
 def loss_function(y_true, y_pred):

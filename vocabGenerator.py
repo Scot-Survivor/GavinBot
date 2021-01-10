@@ -1,8 +1,10 @@
 import os
 import re
-import tensorflow_datasets as tfds
-from random import randint, shuffle
+if __name__ == "__main__":
+    import tensorflow_datasets as tfds
 
+from multiprocessing import Pool
+from collections import Iterable
 
 path_to_dataset = "cornell movie-dialogs corpus"
 
@@ -13,17 +15,18 @@ path_to_movie_conversations = os.path.join(path_to_dataset, "movie_conversations
 def preprocess_sentence(sentence):
     # creating a space between a word and the punctuation following it
     # eg: "he is a boy." => "he is a boy ."
-    sentence = re.sub(r"([?.!,'])", r"\1", sentence)
-    sentence = re.sub(r"[^a-zA-Z?.!,']+", " ", sentence)
+    pattern_a = re.compile(r"([?.!,'])")
+    pattern_b = re.compile(r"[^a-zA-Z?.!,']+")
+    sentence = re.sub(pattern_a, r"\1", sentence)
+    sentence = re.sub(pattern_b, " ", sentence)
     # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
-    sentence = re.sub(r"[^a-zA-z?.!,']+", " ", sentence)
     sentence = sentence.strip()
     # adding start and an end token to the sentence
     return sentence
 
 
 # noinspection PyShadowingNames,PyPep8Naming
-def load_conversations(reddit_set_max, movie_dialog_max):
+def load_conversations(reddit_set_max):
     id2line = {}
     inputs, outputs = [], []
     if movie_dialog_max > 0:
@@ -68,24 +71,59 @@ def load_conversations(reddit_set_max, movie_dialog_max):
     return inputs, outputs
 
 
-MAX_SAMPLES = 1000000
-MAX_LENGTH = 80 + 2
-TARGET_VOCAB_SIZE = int(input("Please enter the vocab size: "))
-print(f"Size: {TARGET_VOCAB_SIZE}")
-save_path = input("Please enter your save path: ")
+def chunk(lst, count):  # Make a list into N number of lists
+    size = len(lst) // count  # figure out the size of them all
+    for i in range(0, count):
+        s = slice(i * size, None if i == count - 1 else (
+                                                                i + 1) * size)  # Using slice here because you can't store 2:3 as a variable
+        yield lst[s]  # Yield the list
 
-reddit_set_max = MAX_SAMPLES
-movie_dialog_max = 0
 
-questions, answers = load_conversations(reddit_set_max, movie_dialog_max)
+def preprocess_process(sentences):
+    outputs = []
+    for sentence in sentences:
+        outputs.append(preprocess_sentence(sentence))
+    return outputs
 
-shuffleThis = list(zip(questions, answers))
-for x in range(randint(0, 10)):
-    shuffle(shuffleThis)
-questions, answers = zip(*shuffleThis)
-print("Starting Tokenizer this may take a while....")
-# Build tokenizer using tfds for both questions and answers
-tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
-    questions + answers, target_vocab_size=TARGET_VOCAB_SIZE)
-tokenizer.save_to_file(f"{save_path}")
 
+def flatten(lis):
+    for item in lis:
+        if isinstance(item, Iterable) and not isinstance(item, str):
+            for x in flatten(item):
+                yield x
+        else:
+            yield item
+
+
+if __name__ == "__main__":
+    MAX_SAMPLES = 20_000_000
+    MAX_LENGTH = 80 + 2
+    cores = 8
+    TARGET_VOCAB_SIZE = 16384  # 16384 int(input("Please enter the vocab size: "))
+    save_path = "Tokenizer-1"  # input("Please enter your save path: ")
+
+    r_set_max = MAX_SAMPLES
+    movie_dialog_max = 0
+
+    questions, answers = load_conversations(r_set_max)
+    generator_q = chunk(questions, cores)
+    generator_a = chunk(answers, cores)
+    lists_q = [next(generator_q) for _ in range(cores)]
+    lists_a = [next(generator_a) for _ in range(cores)]
+    p = Pool(cores)
+    process_outputs = p.map(preprocess_process, lists_q)
+    p.close()
+
+    questions = list(flatten(process_outputs))
+
+    p = Pool(cores)
+    process_outputs = p.map(preprocess_process, lists_a)
+    p.close()
+
+    answers = list(flatten(process_outputs))
+
+    print("Starting Tokenizer this may take a while....")
+    # Build tokenizer using tfds for both questions and answers
+    tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
+        questions + answers, target_vocab_size=TARGET_VOCAB_SIZE)
+    tokenizer.save_to_file(f"{save_path}")

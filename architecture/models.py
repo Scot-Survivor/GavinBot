@@ -94,11 +94,17 @@ class Transformer(tf.keras.Model, ABC):
         return tf.keras.Model(inputs=[inputs, padding_mask], outputs=outputs, name=name)
 
     def create_padding_mask(self, x):
+        """Create a padding mask
+
+        Mask the outputs for attention layers"""
         mask = tf.cast(tf.math.equal(x, 0), tf.float32)
         # batch_size, 1, 1, sequence_length
         return mask[:, tf.newaxis, tf.newaxis, :]
 
     def create_look_ahead_mask(self, x):
+        """Create a Look Ahead mask
+
+        Allows to "look" ahead into the sentence and make predictions based on that."""
         seq_len = tf.shape(x)[1]
         look_ahead_mask = 1 - tf.linalg.band_part(tf.ones((seq_len, seq_len)), -1, 0)
         padding_mask = self.create_padding_mask(x)

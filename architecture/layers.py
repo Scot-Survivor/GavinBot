@@ -1,6 +1,26 @@
 import tensorflow as tf
 
 
+def scaled_dot_product_attention(query, key, value, mask):
+    # Calculate the attention weights
+    matmul_qk = tf.matmul(query, key, transpose_b=True)
+
+    # scale matmul_qk
+    depth = tf.cast(tf.shape(key)[-1], tf.float32)
+    logits = matmul_qk / tf.math.sqrt(depth)
+
+    # add the mask to zero out padding tokens
+    if mask is not None:
+        logits += (mask * -1e9)
+
+    # softmax is normalized on the last axis (seq_len_k)
+    attention_weights = tf.nn.softmax(logits, axis=-1)
+
+    output = tf.matmul(attention_weights, value)
+
+    return output
+
+
 # noinspection PyMethodOverriding,PyMethodMayBeStatic
 class PositionalEncoding(tf.keras.layers.Layer):
     """Positional Encoding

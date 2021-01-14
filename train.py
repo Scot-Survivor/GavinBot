@@ -4,12 +4,14 @@ import marshal
 import itertools
 
 if __name__ == "__main__":
-    import tensorflow as tf
+    # import tensorflow as tf not needed since its imported through architecture.models
     import tensorflow_datasets as tfds
     from tensorflow.keras.utils import plot_model
+    from tensorflow.keras.mixed_precision import experimental as mixed_precision
     from concurrent.futures import ThreadPoolExecutor, wait
     from tensorboard.plugins import projector
-    from architecture.models import Transformer
+    from architecture.models import Transformer, tf
+    from architecture.callbacks.model_callbacks import EarlyStoppingAtMinLoss, PredictCallback
 import numpy as np
 from datetime import datetime
 from random import shuffle, randint
@@ -19,15 +21,31 @@ from collections import Iterable
 
 #  INIT all the variables to avoid "can be undefined" errors.
 path_to_dataset = path_to_movie_conversations = path_to_movie_lines = questions = answers = dataset_train = dataset_val = None
-MAX_SAMPLES = MAX_LENGTH = name = log_dir = load = tokenizerPath = checkpoint_path = tokenizer = optimizer = None
+MAX_SAMPLES = MAX_LENGTH = name = log_dir = load = tokenizerPath = checkpoint_path = tokenizer = optimizer = other_policy = MIXED = None
 NUM_LAYERS = D_MODEL = NUM_HEADS = UNITS = DROPOUT = EPOCHS = BATCH_SIZE = BUFFER_SIZE = cores = TARGET_VOCAB_SIZE = VOCAB_SIZE = 0
-reddit_set_max = movie_dialog_max = 0
+reddit_set_max = movie_dialog_max = START_TOKEN = END_TOKEN = 0
 
 if __name__ == "__main__":
-    config = tf.compat.v1.ConfigProto()
-    config.gpu_options.allow_growth = True
-    session = tf.compat.v1.Session(config=config)
-    os.environ['TF_GPU_THREAD_MODE'] = "gpu_private"
+    other_policy = input("Do you want to enabled mixed precision? y/n (NOT SUPPORTED YET): ")
+    if other_policy == 'y':
+        MIXED = True
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        if gpus:
+            try:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+                print(f"{len(gpus)} Physical GPUS, {len(logical_gpus)} Logical GPUS.")
+            except RuntimeError as e:
+                print(e)
+        os.environ['TF_GPU_THREAD_MODE'] = "gpu_private"
+        policy = mixed_precision.Policy('mixed_float16')
+        mixed_precision.set_policy(policy)
+    else:
+        MIXED = False
+        config = tf.compat.v1.ConfigProto()
+        config.gpu_options.allow_growth = True
+        session = tf.compat.v1.Session(config=config)
 
     print(f"TensorFlow Version: {tf.__version__}")
     print(f"Numpy Version: {np.__version__}")
@@ -67,6 +85,7 @@ if __name__ == "__main__":
         os.mkdir(f"{log_dir}/tokenizer")
         os.mkdir(f"{log_dir}/values/")
         os.mkdir(f"{log_dir}/images/")
+        os.mkdir(f"{log_dir}/logs/")
     except FileExistsError:
         print("Already exists not creating folders")
         pass
@@ -199,8 +218,8 @@ def preprocess_process(sentences):
 def flatten(lis):
     for item in lis:
         if isinstance(item, Iterable) and not isinstance(item, str):
-            for x in flatten(item):
-                yield x
+            for i in flatten(item):
+                yield i
         else:
             yield item
 
@@ -302,29 +321,31 @@ def tokenize_and_filter(inputs, outputs):
     data_gen = chunk(training_data, cores)
     partial_iter = partial(check_length, MAX_LENGTH)
 
-    p = Pool(processes=cores)
+    process_pool = Pool(processes=cores)
     lists = [next(data_gen) for _ in range(cores)]
-    _process_outputs = p.map(partial_iter, lists)
-    p.close()
+    _process_outputs = process_pool.map(partial_iter, lists)
+    process_pool.close()
     inputs = list(itertools.chain(_process_outputs[0]['inputs'], _process_outputs[2]['inputs'],
                                   _process_outputs[1]['inputs'], _process_outputs[3]['inputs']))
     outputs = list(itertools.chain(_process_outputs[0]['outputs'], _process_outputs[2]['outputs'],
                                    _process_outputs[1]['outputs'], _process_outputs[3]['outputs']))
 
     training_data = list(zip(inputs, outputs))
+    del inputs, outputs
     data_gen = chunk(training_data, cores)
 
     partial_iter = partial(tokenize, MAX_LENGTH, START_TOKEN, END_TOKEN, tokenizer)
-    p = Pool(processes=cores)
+    process_pool = Pool(processes=cores)
     lists = [next(data_gen) for _ in range(cores)]
-    _process_outputs = p.map(partial_iter, lists)
-    p.close()
+    _process_outputs = process_pool.map(partial_iter, lists)
+    process_pool.close()
 
     inputs_array = np.concatenate((_process_outputs[0]['inputs'], _process_outputs[2]['inputs'],
                                    _process_outputs[1]['inputs'], _process_outputs[3]['inputs']))
 
     outputs_array = np.concatenate((_process_outputs[0]['outputs'], _process_outputs[2]['outputs'],
                                     _process_outputs[1]['outputs'], _process_outputs[3]['outputs']))
+    del lists, data_gen
 
     return inputs_array, outputs_array
 
@@ -337,6 +358,7 @@ if __name__ == "__main__":
     answers_train = answers[int(round(len(answers) * 0.8, 0)):]
     questions_val = questions[:int(round(len(questions) * .2, 0))]
     answers_val = answers[:int(round(len(answers) * .2, 0))]
+    del questions, answers
 
     # decoder inputs use the previous target as input
     # remove s_token from targets
@@ -368,7 +390,6 @@ if __name__ == "__main__":
     dataset_val = dataset_val.batch(BATCH_SIZE)
     dataset_val = dataset_val.prefetch(tf.data.experimental.AUTOTUNE)
     print("Done Dataset shuffling, batching and prefetch")
-    del questions, answers
 
     mirrored_strategy = tf.distribute.MirroredStrategy()
 
@@ -379,7 +400,8 @@ if __name__ == "__main__":
             units=UNITS,
             d_model=D_MODEL,
             num_heads=NUM_HEADS,
-            dropout=DROPOUT)
+            dropout=DROPOUT,
+            mixed=MIXED)
         model = transformer.return_model()
 
 
@@ -388,6 +410,8 @@ def loss_function(y_true, y_pred):
 
     loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
                                                          reduction='none')(y_true, y_pred)
+    # Attempting new Loss function
+    # loss = tf.keras.losses.MeanSquaredError(reduction='none')(y_true, y_pred)
     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
     loss = tf.multiply(loss, mask)
 
@@ -462,10 +486,11 @@ if __name__ == "__main__":
 def accuracy(y_true, y_pred):
     # ensure labels have shape (batch_size, max_len - 1)
     y_true = tf.reshape(y_true, shape=(-1, MAX_LENGTH - 1))
-    return tf.keras.metrics.sparse_categorical_accuracy(y_true, y_pred)
+    return tf.keras.metrics.SparseCategoricalAccuracy(y_true, y_pred)
 
 
 if __name__ == "__main__":
+    print("Writing metadata")
 
     with open(os.path.join(log_dir, 'metadata.tsv'), "w", encoding="utf-8") as f:
         for subwords in tokenizer.subwords:
@@ -501,21 +526,22 @@ if __name__ == "__main__":
         f.write(log)
     with open(f"{log_dir}/values/hparams.txt", "w", encoding="utf8") as f:
         data = f"""{str(MAX_SAMPLES)}
-    {name}
-    {str(MAX_LENGTH)}
-    {str(BATCH_SIZE)}
-    {str(BUFFER_SIZE)}
-    {str(NUM_LAYERS)}
-    {str(D_MODEL)}
-    {str(NUM_HEADS)}
-    {str(UNITS)}
-    {str(DROPOUT)}
-    {str(VOCAB_SIZE)}
-    {str(TARGET_VOCAB_SIZE)}
+{name}
+{str(MAX_LENGTH)}
+{str(BATCH_SIZE)}
+{str(BUFFER_SIZE)}
+{str(NUM_LAYERS)}
+{str(D_MODEL)}
+{str(NUM_HEADS)}
+{str(UNITS)}
+{str(DROPOUT)}
+{str(VOCAB_SIZE)}
+{str(TARGET_VOCAB_SIZE)}
     """
         f.write(data)
         f.close()
-
+    print("Done writing metadata")
+    print("Writing Image Structure of the model")
     try:
         plot_model(model, f"{log_dir}/images/{name}_Image.png", expand_nested=True, show_shapes=True)
     except Exception as e:
@@ -525,12 +551,17 @@ if __name__ == "__main__":
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch="510, 520",
                                                           update_freq='epoch')
+    predict_callback = PredictCallback(tokenizer=tokenizer, start_token=START_TOKEN, end_token=END_TOKEN, max_length=MAX_LENGTH,
+                                       log_dir=log_dir)
+    min_callback = EarlyStoppingAtMinLoss(patience=2)
+    print("Done.")
+    print("Starting train....")
 
     # tf.compat.v1.keras.backend.set_session(tf_debug.TensorBoardDebugWrapperSession(session, "DESKTOP-A17GHDN:8081"))
     model.compile(optimizer=optimizer, loss=loss_function, metrics=['accuracy'])
     with tf.profiler.experimental.Trace("Train"):
         model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS,
-                  callbacks=[cp_callback, tensorboard_callback])
+                  callbacks=[cp_callback, tensorboard_callback, predict_callback, min_callback], use_multiprocessing=True)
     print(log)
     print(linebreak)
     model.summary()

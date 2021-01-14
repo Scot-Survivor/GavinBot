@@ -99,8 +99,8 @@ if __name__ == "__main__":
     MAX_SAMPLES = 20_000_000
     MAX_LENGTH = 80 + 2
     cores = 8
-    TARGET_VOCAB_SIZE = 16384  # 16384 int(input("Please enter the vocab size: "))
-    save_path = "Tokenizer-1"  # input("Please enter your save path: ")
+    TARGET_VOCAB_SIZE = 32768  # 16384 int(input("Please enter the vocab size: "))
+    save_path = "Tokenizer-2"  # input("Please enter your save path: ")
 
     r_set_max = MAX_SAMPLES
     movie_dialog_max = 0

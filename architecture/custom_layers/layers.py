@@ -7,7 +7,11 @@ def scaled_dot_product_attention(query, key, value, mask):
 
     # scale matmul_qk
     depth = tf.cast(tf.shape(key)[-1], tf.float32)
-    logits = matmul_qk / tf.math.sqrt(depth)
+    try:
+        logits = matmul_qk / tf.math.sqrt(depth)
+    except TypeError:
+        logits = tf.cast(matmul_qk, 'float32') / tf.math.sqrt(depth)
+        logits = tf.cast(logits, 'float16')  # Cast logits back to float16
 
     # add the mask to zero out padding tokens
     if mask is not None:
@@ -56,7 +60,10 @@ class PositionalEncoding(tf.keras.layers.Layer):
         return tf.cast(pos_encoding, tf.float32)
 
     def call(self, inputs):
-        return inputs + self.pos_encoding[:, :tf.shape(inputs)[1], :]
+        try:
+            return inputs + self.pos_encoding[:, :tf.shape(inputs)[1], :]
+        except TypeError:
+            return inputs + tf.cast(self.pos_encoding[:, :tf.shape(inputs)[1], :], 'float16')
 
     def get_config(self):
         cfg = super().get_config()

@@ -1,9 +1,6 @@
 import os
 import re
-if __name__ == "__main__":
-    import tensorflow_datasets as tfds
-
-from multiprocessing import Pool
+import tensorflow_datasets as tfds
 from collections import Iterable
 
 path_to_dataset = "cornell movie-dialogs corpus"
@@ -48,7 +45,7 @@ def load_conversations(reddit_set_max):
                 if len(inputs) >= movie_dialog_max:
                     break
 
-    with open("train.from", "r", encoding="utf8", buffering=1000) as file:
+    with open("D:\\Datasets\\reddit_data\\files\\train.from", "r", encoding="utf8", buffering=1000) as file:
         newline = " newlinechar "
         for line in file:
             if newline in line:
@@ -58,7 +55,7 @@ def load_conversations(reddit_set_max):
                 break
         file.close()
 
-    with open("train.to", "r", encoding="utf8", buffering=1000) as file:
+    with open("D:\\Datasets\\reddit_data\\files\\train.to", "r", encoding="utf8", buffering=1000) as file:
         newline = " newlinechar "
         for line in file:
             if newline in line:
@@ -74,8 +71,7 @@ def load_conversations(reddit_set_max):
 def chunk(lst, count):  # Make a list into N number of lists
     size = len(lst) // count  # figure out the size of them all
     for i in range(0, count):
-        s = slice(i * size, None if i == count - 1 else (
-                                                                i + 1) * size)  # Using slice here because you can't store 2:3 as a variable
+        s = slice(i * size, None if i == count - 1 else (i + 1) * size)  # Using slice here because you can't store 2:3 as a variable
         yield lst[s]  # Yield the list
 
 
@@ -96,34 +92,19 @@ def flatten(lis):
 
 
 if __name__ == "__main__":
-    MAX_SAMPLES = 20_000_000
+    MAX_SAMPLES = 80_000_000
     MAX_LENGTH = 80 + 2
     cores = 8
-    TARGET_VOCAB_SIZE = 32768  # 16384 int(input("Please enter the vocab size: "))
-    save_path = "Tokenizer-2"  # input("Please enter your save path: ")
+    TARGET_VOCAB_SIZE = 16384  # 16384 int(input("Please enter the vocab size: "))
+    save_path = "Tokenizer-3"  # input("Please enter your save path: ")
 
     r_set_max = MAX_SAMPLES
     movie_dialog_max = 0
 
     questions, answers = load_conversations(r_set_max)
-    generator_q = chunk(questions, cores)
-    generator_a = chunk(answers, cores)
-    lists_q = [next(generator_q) for _ in range(cores)]
-    lists_a = [next(generator_a) for _ in range(cores)]
-    p = Pool(cores)
-    process_outputs = p.map(preprocess_process, lists_q)
-    p.close()
-
-    questions = list(flatten(process_outputs))
-
-    p = Pool(cores)
-    process_outputs = p.map(preprocess_process, lists_a)
-    p.close()
-
-    answers = list(flatten(process_outputs))
 
     print("Starting Tokenizer this may take a while....")
     # Build tokenizer using tfds for both questions and answers
     tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
-        questions + answers, target_vocab_size=TARGET_VOCAB_SIZE)
+        questions + answers, target_vocab_size=TARGET_VOCAB_SIZE, max_subword_length=15)
     tokenizer.save_to_file(f"{save_path}")

@@ -2,7 +2,13 @@ import os
 import re
 import marshal
 import itertools
-
+import numpy as np
+from datetime import datetime
+from random import shuffle, randint
+from multiprocessing import Pool
+from functools import partial
+from collections import Iterable
+os.environ['TF_GPU_THREAD_MODE'] = "gpu_private"
 if __name__ == "__main__":
     # import tensorflow as tf not needed since its imported through architecture.models
     import tensorflow_datasets as tfds
@@ -11,22 +17,18 @@ if __name__ == "__main__":
     from concurrent.futures import ThreadPoolExecutor, wait
     from tensorboard.plugins import projector
     from architecture.models import Transformer, tf
-    from architecture.callbacks.model_callbacks import EarlyStoppingAtMinLoss, PredictCallback
-import numpy as np
-from datetime import datetime
-from random import shuffle, randint
-from multiprocessing import Pool
-from functools import partial
-from collections import Iterable
+    from architecture.callbacks.model_callbacks import PredictCallback
+    # from keras.preprocessing.text import Tokenizer  Different Tokenizer.
+
 
 #  INIT all the variables to avoid "can be undefined" errors.
-path_to_dataset = path_to_movie_conversations = path_to_movie_lines = questions = answers = dataset_train = dataset_val = None
+path_to_dataset = path_to_movie_conversations = path_to_movie_lines = questions = answers = dataset_train = dataset_val = regex = None
 MAX_SAMPLES = MAX_LENGTH = name = log_dir = load = tokenizerPath = checkpoint_path = tokenizer = optimizer = other_policy = MIXED = None
 NUM_LAYERS = D_MODEL = NUM_HEADS = UNITS = DROPOUT = EPOCHS = BATCH_SIZE = BUFFER_SIZE = cores = TARGET_VOCAB_SIZE = VOCAB_SIZE = 0
-reddit_set_max = movie_dialog_max = START_TOKEN = END_TOKEN = 0
+reddit_set_max = movie_dialog_max = START_TOKEN = END_TOKEN = regex_cores = 0
 
 if __name__ == "__main__":
-    other_policy = input("Do you want to enabled mixed precision? y/n (NOT SUPPORTED YET): ")
+    other_policy = 'n'  # input("Do you want to enabled mixed precision? y/n (NOT SUPPORTED YET): ")
     if other_policy == 'y':
         MIXED = True
         gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -38,7 +40,6 @@ if __name__ == "__main__":
                 print(f"{len(gpus)} Physical GPUS, {len(logical_gpus)} Logical GPUS.")
             except RuntimeError as e:
                 print(e)
-        os.environ['TF_GPU_THREAD_MODE'] = "gpu_private"
         policy = mixed_precision.Policy('mixed_float16')
         mixed_precision.set_policy(policy)
     else:
@@ -60,8 +61,8 @@ if __name__ == "__main__":
     name = input("Please enter a ModelName for this train: ")
     log_dir = "bunchOfLogs/" + name
     BATCH_SIZE = int(input("BATCH_SIZE(32): "))
-    BUFFER_SIZE = int(input("BUFFER_SIZE(60k): "))
-    MAX_LENGTH = 80 + 2
+    BUFFER_SIZE = 20_000
+    MAX_LENGTH = 40 + 2  # Max Length changed back to 40 to save model from useless large information
 
     # Hyper-parameters
     NUM_LAYERS = int(input("Please enter the number of NUM_LAYERS(4): "))
@@ -74,7 +75,9 @@ if __name__ == "__main__":
     tokenizerPath = None
     if load == "y":
         tokenizerPath = input("Please enter the path the tokenizer: ")
+    regex = input("Do you need to run regex? y/n: ")
     cores = 4
+    regex_cores = os.cpu_count()
     TARGET_VOCAB_SIZE = 2 ** 14
 
     checkpoint_path = f"{log_dir}/cp.ckpt"
@@ -102,12 +105,13 @@ if __name__ == "__main__":
 
 
 def preprocess_sentence(sentence):
+    sentence = sentence.strip()
     # creating a space between a word and the punctuation following it
     # eg: "he is a boy." => "he is a boy ."
-    sentence = re.sub(r"([?.!,'])", r"\1", sentence)
-    sentence = re.sub(r"[^a-zA-Z?.!,']+", " ", sentence)
-    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
-    sentence = re.sub(r"[^a-zA-z?.!,']+", " ", sentence)
+    sentence = re.sub(r"([?.!,'*])", r" \1 ", sentence)
+    sentence = re.sub(r'[" "]+', " ", sentence)
+    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",", "'")
+    sentence = re.sub(r"[^a-zA-z?.!,'*]+", " ", sentence)
     sentence = sentence.strip()
     # adding start and an end token to the sentence
     return sentence
@@ -136,7 +140,7 @@ def load_conversations(reddit_set_max, movie_dialog_max):
                 if len(inputs) >= movie_dialog_max:
                     break
 
-    with open("train.from", "r", encoding="utf8", buffering=1000) as file:
+    with open("D:\\Datasets\\reddit_data\\files\\train.from", "r", encoding="utf8", buffering=1000) as file:
         newline = " newlinechar "
         for line in file:
             if newline in line:
@@ -146,7 +150,7 @@ def load_conversations(reddit_set_max, movie_dialog_max):
                 break
         file.close()
 
-    with open("train.to", "r", encoding="utf8", buffering=1000) as file:
+    with open("D:\\Datasets\\reddit_data\\files\\train.to", "r", encoding="utf8", buffering=1000) as file:
         newline = " newlinechar "
         for line in file:
             if newline in line:
@@ -230,34 +234,29 @@ if __name__ == "__main__":
     print(f"Answers: {len(answers)}\nQuestions: {len(questions)}")
     # questions, answers = sort_data(reddit_set_max)
     shuffleThis = list(zip(questions, answers))
-    for x in range(randint(0, 10)):
+    for x in range(randint(0, 4)):
         shuffle(shuffleThis)
     questions, answers = zip(*shuffleThis)
     print("Done loading...")
-    print("Starting Regex....")
-    generator_q = chunk(questions, cores)
-    generator_a = chunk(answers, cores)
-    lists_q = [next(generator_q) for _ in range(cores)]
-    lists_a = [next(generator_a) for _ in range(cores)]
-    p = Pool(cores)
-    process_outputs = p.map(preprocess_process, lists_q)
-    p.close()
+    if regex == "y":
+        print("Starting Regex....")
+        generator_q = chunk(questions, regex_cores)
+        generator_a = chunk(answers, regex_cores)
+        lists_q = [next(generator_q) for _ in range(regex_cores)]
+        lists_a = [next(generator_a) for _ in range(regex_cores)]
+        p = Pool(regex_cores)
+        process_outputs = p.map(preprocess_process, lists_q)
+        p.close()
 
-    questions = list(flatten(process_outputs))
+        questions = list(flatten(process_outputs))
 
-    p = Pool(cores)
-    process_outputs = p.map(preprocess_process, lists_a)
-    p.close()
-    del lists_q, lists_a, generator_a, generator_q
+        p = Pool(regex_cores)
+        process_outputs = p.map(preprocess_process, lists_a)
+        p.close()
+        del lists_q, lists_a, generator_a, generator_q
 
-    answers = list(flatten(process_outputs))
-    print("Finished Regex")
-    print(f"Pickling Questions and answers for {name}")
-    questionsMarshal = f"{log_dir}/pickles/{name}_questions.marshal"
-    answersMarshal = f"{log_dir}/pickles/{name}_answers.marshal"
-    save_marshal(questions, questionsMarshal)
-    save_marshal(answers, answersMarshal)
-    print(f"Done saving....")
+        answers = list(flatten(process_outputs))
+        print("Finished Regex")
     if load == "n":
         print("Starting Tokenizer this may take a while....")
         # Build tokenizer using tfds for both questions and answers
@@ -354,6 +353,12 @@ if __name__ == "__main__":
     print("Filtering data")
     questions, answers = tokenize_and_filter(questions, answers)
     print("Done filtering")
+    print(f"Pickling Questions and answers for {name}")
+    questionsMarshal = f"{log_dir}/pickles/{name}_questions.marshal"
+    answersMarshal = f"{log_dir}/pickles/{name}_answers.marshal"
+    save_marshal(questions, questionsMarshal)
+    save_marshal(answers, answersMarshal)
+    print(f"Done saving....")
     questions_train = questions[int(round(len(questions) * .8, 0)):]
     answers_train = answers[int(round(len(answers) * 0.8, 0)):]
     questions_val = questions[:int(round(len(questions) * .2, 0))]
@@ -390,6 +395,8 @@ if __name__ == "__main__":
     dataset_val = dataset_val.batch(BATCH_SIZE)
     dataset_val = dataset_val.prefetch(tf.data.experimental.AUTOTUNE)
     print("Done Dataset shuffling, batching and prefetch")
+    # validation_path = f"./{log_dir}/pickles/dataset_validation/"
+    # tf.data.experimental.save(dataset=dataset_val, path=validation_path)
 
     mirrored_strategy = tf.distribute.MirroredStrategy()
 
@@ -408,10 +415,9 @@ if __name__ == "__main__":
 def loss_function(y_true, y_pred):
     y_true = tf.reshape(y_true, shape=(-1, MAX_LENGTH - 1))
 
-    loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
-                                                         reduction='none')(y_true, y_pred)
-    # Attempting new Loss function
-    # loss = tf.keras.losses.MeanSquaredError(reduction='none')(y_true, y_pred)
+    loss = tf.keras.losses.SparseCategoricalCrossentropy(
+        from_logits=True, reduction='none')(y_true, y_pred)
+
     mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
     loss = tf.multiply(loss, mask)
 
@@ -484,9 +490,9 @@ if __name__ == "__main__":
 
 
 def accuracy(y_true, y_pred):
-    # ensure labels have shape (batch_size, max_len - 1)
+    # ensure labels have shape (batch_size, MAX_LENGTH - 1)
     y_true = tf.reshape(y_true, shape=(-1, MAX_LENGTH - 1))
-    return tf.keras.metrics.SparseCategoricalAccuracy(y_true, y_pred)
+    return tf.metrics.SparseCategoricalAccuracy()(y_true, y_pred)
 
 
 if __name__ == "__main__":
@@ -521,7 +527,7 @@ if __name__ == "__main__":
      BATCH_SIZE: {BATCH_SIZE},
      BUFFER_SIZE: {BUFFER_SIZE},
      VOCAB_SIZE: {VOCAB_SIZE},
-    {linebreak}"""
+{linebreak}"""
     with open("Parameters.txt", "a") as f:
         f.write(log)
     with open(f"{log_dir}/values/hparams.txt", "w", encoding="utf8") as f:
@@ -553,7 +559,6 @@ if __name__ == "__main__":
                                                           update_freq='epoch')
     predict_callback = PredictCallback(tokenizer=tokenizer, start_token=START_TOKEN, end_token=END_TOKEN, max_length=MAX_LENGTH,
                                        log_dir=log_dir)
-    min_callback = EarlyStoppingAtMinLoss(patience=2)
     print("Done.")
     print("Starting train....")
 
@@ -561,7 +566,7 @@ if __name__ == "__main__":
     model.compile(optimizer=optimizer, loss=loss_function, metrics=['accuracy'])
     with tf.profiler.experimental.Trace("Train"):
         model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS,
-                  callbacks=[cp_callback, tensorboard_callback, predict_callback, min_callback], use_multiprocessing=True)
+                  callbacks=[cp_callback, tensorboard_callback, predict_callback], use_multiprocessing=True)
     print(log)
     print(linebreak)
     model.summary()

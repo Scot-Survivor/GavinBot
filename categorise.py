@@ -1,17 +1,15 @@
 import sqlite3
 import json
 from datetime import datetime
-import sys
 import bz2
+import shutil
+import sys
 
 timeFrame = sys.argv[1]
-try:
-    last_utc = sys.argv[2]
-except IndexError:
-    last_utc = 0
+last_utc = 0
 sql_transaction = []
 
-connection = sqlite3.connect(f'D:/Datasets/reddit_data/databases/{timeFrame}.db')
+connection = sqlite3.connect(f'{timeFrame}.db')
 c = connection.cursor()
 start_row = 0
 cleanup = 1000000
@@ -128,12 +126,6 @@ if __name__ == "__main__":
                 score = row['score']
                 comment_id = row['name']
                 subreddit = row['subreddit']
-                if int(created_utc) <= int(last_utc):
-                    if row_counter % 100000 == 0:
-                        print(
-                            'Total Rows Read: {}, Paired Rows: {}, Time: {}'.format(row_counter, paired_rows,
-                                                                                    str(datetime.now())))
-                    continue
                 parent_data = find_parent(parent_id)
 
                 if score >= 2:
@@ -163,6 +155,8 @@ if __name__ == "__main__":
         print("Starting VACUUM")
         c.execute("VACUUM")
         connection.commit()
+        connection.close()
+        print("Moving File...")
+        shutil.move(f'{timeFrame}.db', f'D:\\Datasets\\reddit_data\databases\\{timeFrame}.db')
     except KeyboardInterrupt:
-        with open("out.txt", "a") as f:
-            f.write(f"\nLast unix: {created_utc}")
+        print("Quitting....")

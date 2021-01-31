@@ -2,27 +2,18 @@ import tensorflow as tf
 
 
 def scaled_dot_product_attention(query, key, value, mask):
-    # Calculate the attention weights
     matmul_qk = tf.matmul(query, key, transpose_b=True)
 
-    # scale matmul_qk
     depth = tf.cast(tf.shape(key)[-1], tf.float32)
-    try:
-        logits = matmul_qk / tf.math.sqrt(depth)
-    except TypeError:
-        logits = tf.cast(matmul_qk, 'float32') / tf.math.sqrt(depth)
-        logits = tf.cast(logits, 'float16')  # Cast logits back to float16
+    logits = matmul_qk / tf.math.sqrt(depth)
 
-    # add the mask to zero out padding tokens
+    # add the mask zero out padding tokens.
     if mask is not None:
         logits += (mask * -1e9)
 
-    # softmax is normalized on the last axis (seq_len_k)
     attention_weights = tf.nn.softmax(logits, axis=-1)
 
-    output = tf.matmul(attention_weights, value)
-
-    return output
+    return tf.matmul(attention_weights, value)
 
 
 # noinspection PyMethodOverriding,PyMethodMayBeStatic
@@ -42,13 +33,14 @@ class PositionalEncoding(tf.keras.layers.Layer):
         self.pos_encoding = self.positional_encoding(position, d_model=d_model)
 
     def get_angles(self, position, i, d_model):
-        angles = 1 / tf.pow(tf.cast(10000, tf.float32), (2 * (i // 2)) / tf.cast(d_model, tf.float32))
+        angles = 1 / tf.pow(10000, (2 * (i // 2)) / tf.cast(d_model, tf.float32))
         return position * angles
 
     def positional_encoding(self, position, d_model):
         angle_rads = self.get_angles(
             position=tf.range(position, dtype=tf.float32)[:, tf.newaxis],
-            i=tf.range(d_model, dtype=tf.float32)[tf.newaxis, :], d_model=d_model)
+            i=tf.range(d_model, dtype=tf.float32)[tf.newaxis, :],
+            d_model=d_model)
 
         # apply sin to even index in the array
         sines = tf.math.sin(angle_rads[:, 0::2])
@@ -60,10 +52,7 @@ class PositionalEncoding(tf.keras.layers.Layer):
         return tf.cast(pos_encoding, tf.float32)
 
     def call(self, inputs):
-        try:
-            return inputs + self.pos_encoding[:, :tf.shape(inputs)[1], :]
-        except TypeError:
-            return inputs + tf.cast(self.pos_encoding[:, :tf.shape(inputs)[1], :], 'float16')
+        return inputs + self.pos_encoding[:, :tf.shape(inputs)[1], :]
 
     def get_config(self):
         cfg = super().get_config()
@@ -104,7 +93,8 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         return tf.transpose(inputs, perm=[0, 2, 1, 3])
 
     def call(self, inputs):
-        query, key, value, mask = inputs['query'], inputs['key'], inputs['value'], inputs['mask']
+        query, key, value, mask = inputs['query'], inputs['key'], inputs[
+            'value'], inputs['mask']
         batch_size = tf.shape(query)[0]
 
         # linear layers
@@ -117,15 +107,13 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         key = self.split_heads(key, batch_size)
         value = self.split_heads(value, batch_size)
 
-        # scaled dot-production attention
         scaled_attention = scaled_dot_product_attention(query, key, value, mask)
 
         scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])
 
-        # concatenation of heads
-        concat_attention = tf.reshape(scaled_attention, (batch_size, -1, self.d_model))
+        concat_attention = tf.reshape(scaled_attention,
+                                      (batch_size, -1, self.d_model))
 
-        # final linear layer
         outputs = self.dense(concat_attention)
 
         return outputs

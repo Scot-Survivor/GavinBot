@@ -6,6 +6,7 @@ import marshal
 import os
 from concurrent.futures import ThreadPoolExecutor, wait
 from architecture.models import Transformer
+from architecture.callbacks.model_callbacks import EarlyStoppingAtMinLoss, PredictCallback
 
 config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -149,9 +150,6 @@ def tokenize_and_filter(inputs, outputs):
     return inputs_array, outputs_array
 
 
-print("Filtering data")
-questions, answers = tokenize_and_filter(questions, answers)
-print("Done filtering")
 questions_train = questions[int(round(len(questions)*.8, 0)):]
 answers_train = answers[int(round(len(answers)*0.8, 0)):]
 questions_val = questions[:int(round(len(questions)*.2, 0))]
@@ -311,9 +309,14 @@ optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98, eps
 cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch="510, 520",
                                                       update_freq='epoch')
+predict_callback = PredictCallback(tokenizer=tokenizer, start_token=START_TOKEN, end_token=END_TOKEN, max_length=MAX_LENGTH,
+                                       log_dir=log_dir)
+min_callback = EarlyStoppingAtMinLoss(patience=2)
 
 model.summary()
 model.load_weights(checkpoint_path)
 model.compile(optimizer=optimizer, loss=loss_function, metrics=['accuracy'])
 with tf.profiler.experimental.Trace("Train"):
-    model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS, callbacks=[cp_callback, tensorboard_callback], initial_epoch=INITAL_EPOCH)
+    model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS, callbacks=[cp_callback, tensorboard_callback,
+                                                                                    predict_callback, min_callback],
+              initial_epoch=INITAL_EPOCH)

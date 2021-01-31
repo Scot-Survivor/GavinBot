@@ -36,9 +36,9 @@ class Gavin(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, user_message: discord.Message):
         if not self.loading:
-            await self.bot.change_presence(activity=discord.Game(name=f"Loading new model {self.ModelName}"))
+            await self.bot.change_presence(activity=discord.Game(name=f"Loaded Model {self.ModelName}"))
             if user_message.author != self.bot.user:
-                pattern = re.compile(r"[^a-zA-Z?.!,'<>0-9 ]+")
+                pattern = re.compile(r"[^a-zA-Z?.!,'\"<>0-9 ]+")
                 message = re.sub(pattern, "", user_message.content)
                 words = message.split(' ')
                 if words[0] == "<!753611486999478322>" or words[0] == "<753611486999478322>":
@@ -75,8 +75,8 @@ Output: {response}""")
             else:
                 sent = await channel.send(msg)
                 user = None
-                await sent.add_reaction(emoji="😂")
-
+                # await sent.add_reaction(emoji="😂")
+        '''
         while user != self.bot.user:
             def check(r, u):
                 return r, u
@@ -91,6 +91,7 @@ Output: {response}""")
                     await archive_channel.send(msg)
                     await channel.send("Added to archives!")
                     return
+        '''
         return
 
     @commands.command(name="hparams", aliases=['params', 'hp'])

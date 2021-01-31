@@ -1,17 +1,63 @@
+import os
 import sqlite3
+import re
+
 import pandas as pd
-import multiprocessing as mp
 
-timeframes = ['2015-01', '2015-02', '2015-03', '2015-05', '2014-12', '2014-11', '2014-10', '2014-09', '2014-01', '2014-02', '2014-05']
+from multiprocessing import Pool
+from collections import Iterable
+
+timeframes = ['2015-01', '2015-02', '2014-12', '2014-11', '2014-10', '2014-09', '2014-01', '2014-02', '2014-05']
 
 
-def sort_out(time_frame, core_id):
+def preprocess_sentence(sentence):
+    sentence = sentence.strip()
+    # creating a space between a word and the punctuation following it
+    # eg: "he is a boy." => "he is a boy ."
+    sentence = re.sub(r"([?.!,'])", r"\1", sentence)
+    sentence = re.sub(r'[" "]+', " ", sentence)
+    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
+    sentence = re.sub(r"[^a-zA-z?.!,']+", " ", sentence)
+    sentence = sentence.strip()
+    # adding start and an end token to the sentence
+    return sentence
+
+
+def chunk(lst, count):  # Make a list into N number of lists
+    size = len(lst) // count  # figure out the size of them all
+    for i in range(0, count):
+        s = slice(i * size, None if i == count - 1 else (i + 1) * size)  # Using slice here because you can't store 2:3 as a variable
+        yield lst[s]  # Yield the list
+
+
+def preprocess_process(sentences):
+    outputs = []
+    for sentence in sentences:
+        outputs.append(preprocess_sentence(sentence))
+    return outputs
+
+
+def flatten(lis):
+    for item in lis:
+        if isinstance(item, Iterable) and not isinstance(item, str):
+            for i in flatten(item):
+                yield i
+        else:
+            yield item
+
+
+def sort_out(time_frame):
     for t_frame in time_frame:
         connection = sqlite3.connect('D:/Datasets/reddit_data/databases/{}.db'.format(t_frame))
-        limit = 100000
+        limit = 1000000
         last_unix = 0
         cur_length = limit
-        counter = 0
+        inputs = []
+        outputs = []
+        count = 0
+        cores = os.cpu_count()
+        write_inputs = []
+        write_outputs = []
 
         while cur_length == limit:
             try:
@@ -23,36 +69,40 @@ def sort_out(time_frame, core_id):
             else:
                 last_unix = df.tail(1)['unix'].values[0]
                 cur_length = len(df)
-                with open('train.from', 'a', encoding='utf8') as f:
-                    for content in df['parent'].values:
-                        f.write(content + '\n')
+                for content in df['parent'].values:
+                    inputs.append(preprocess_sentence(str(content)))
 
-                with open('train.to', 'a', encoding='utf8') as f:
-                    for content in df['comment'].values:
-                        f.write(str(content) + '\n')
+                for content in df['comment'].values:
+                    outputs.append(preprocess_sentence(str(content)))
 
-                counter += 1
-                if counter % 2 == 0:
-                    print(counter * limit, ' rows completed so far' + f' {t_frame}' + f' ID: {core_id}')
+                generator_i = chunk(df['parent'].values, cores)
+                generator_o = chunk(df['comment'].values, cores)
+                lists_i = [next(generator_i) for _ in range(cores)]
+                lists_o = [next(generator_o) for _ in range(cores)]
+                p = Pool(cores)
+                process_outputs = p.map(preprocess_process, lists_i)
+                p.close()
 
+                write_inputs.extend(list(flatten(process_outputs)))
 
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
+                p = Pool(cores)
+                process_outputs = p.map(preprocess_process, lists_o)
+                p.close()
+
+                write_outputs.extend(list(flatten(process_outputs)))
+                count += 1
+                if count % 10 == 0:
+                    print(f"{count * limit} rows down so far.")
+
+            with open("D:\\Datasets\\reddit_data\\files\\train.from", "a", encoding='utf8') as f:
+                for sentence in write_inputs:
+                    f.write(sentence + '\n')
+
+            with open("D:\\Datasets\\reddit_data\\files\\train.to", "a", encoding='utf-8') as f:
+                for sentence in write_outputs:
+                    f.write(sentence + '\n')
+        print(f"{t_frame} finished.")
 
 
 if __name__ == "__main__":
-    sizes = len(timeframes) // 4
-    chunked_list = chunks(timeframes, sizes)
-    cpu = 0
-    once = False
-    while True:
-        try:
-            p = mp.Process(target=sort_out, args=(next(chunked_list), str(cpu)), name=f"CPU-Sort Out")
-            p.start()
-            cpu += 1
-        except StopIteration:
-            if not once:
-                print(f"Stopped at {cpu} processes")
-                once = True
+    sort_out(timeframes)

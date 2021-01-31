@@ -13,8 +13,9 @@ class PredictCallback(tf.keras.callbacks.Callback):
         self.MAX_LENGTH = max_length
         self.prompts = ["Hey?", "Hi?", "Hello.", "Hey.", "How are you?",
                         "What you doing?", "How are you doing?", "My name is Josh!",
-                        "Nice to meet you!"]
-        self.model_path = log_dir
+                        "Nice to meet you!", "What is your name?", "How old are you?"]
+        random.shuffle(self.prompts)
+        self.log_dir = log_dir
 
         self.title_formatting = "=" * 10
         self.past_tests = []
@@ -47,7 +48,7 @@ class PredictCallback(tf.keras.callbacks.Callback):
         # creating a space between a word and the punctuation following it
         # eg: "he is a boy." => "he is a boy ."
         sentence = re.sub(r"([?.!,'])", r"\1", sentence)
-        sentence = re.sub(r"[^a-zA-Z?.!,']+", " ", sentence)
+        sentence = re.sub(r'[" "]+', " ", sentence)
         # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
         sentence = re.sub(r"[^a-zA-z?.!,']+", " ", sentence)
         sentence = sentence.strip()
@@ -57,12 +58,13 @@ class PredictCallback(tf.keras.callbacks.Callback):
     def _predict(self):
         predictions = []
         print("Predicting... (This could take a little bit.)")
-        for i in range(random.randint(1, 3)):  # TODO convert this to gradually increase the number of tests maxing at a value set at construction time.
-            sentence = random.choice(self.prompts)
+        for i in range(random.randint(4, len(self.prompts))):  # TODO convert this to gradually increase the number of tests maxing at a value set at construction time.
+            sentence = self.prompts[i]
             prediction = self._evaluate(sentence)
 
             predictions.append(
                 (sentence, self.tokenizer.decode([i for i in prediction if i < self.tokenizer.vocab_size])))
+        random.shuffle(self.prompts)
 
         return predictions
 
@@ -81,6 +83,7 @@ class PredictCallback(tf.keras.callbacks.Callback):
         print("Wrote Files.")
 
     def on_epoch_end(self, epoch, logs=None):
+        epoch += 1
         tests = self._predict()
         print(f"{self.title_formatting} Responses for Epoch: {epoch} {self.title_formatting}")
         for (sentence, response) in tests:
@@ -91,7 +94,7 @@ class PredictCallback(tf.keras.callbacks.Callback):
             print(f"{self.title_formatting} Log Information {self.title_formatting}")
             keys = list(logs.keys())
             print(f"Log Keys: {keys}")
-        print(self.title_formatting)
+        print(self.title_formatting + self.title_formatting + self.title_formatting)
 
     def on_train_end(self, logs=None):
         self.file_writer()

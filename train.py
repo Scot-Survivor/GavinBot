@@ -1,7 +1,6 @@
 import os
 import re
 import marshal
-import itertools
 import numpy as np
 from datetime import datetime
 from random import shuffle, randint
@@ -109,7 +108,7 @@ def preprocess_sentence(sentence):
     # creating a space between a word and the punctuation following it
     # eg: "he is a boy." => "he is a boy ."
     sentence = re.sub(r"([?.!,'*])", r" \1 ", sentence)
-    sentence = re.sub(r'[" "]+', " ", sentence)
+    sentence = re.sub(r'["]+', " ", sentence)
     # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",", "'")
     sentence = re.sub(r"[^a-zA-z?.!,'*]+", " ", sentence)
     sentence = sentence.strip()
@@ -238,40 +237,46 @@ if __name__ == "__main__":
         shuffle(shuffleThis)
     questions, answers = zip(*shuffleThis)
     print("Done loading...")
-    if regex == "y":
+    if regex == "y":  # If we're running the regex do this.
         print("Starting Regex....")
+        # Create the Generator Objects
         generator_q = chunk(questions, regex_cores)
         generator_a = chunk(answers, regex_cores)
+
+        # Use a 2D List to split the questions/answers into chunks for each core (How many used defined by Regex_cores)
         lists_q = [next(generator_q) for _ in range(regex_cores)]
         lists_a = [next(generator_a) for _ in range(regex_cores)]
+
+        # Init the Pool with workers = the number of regex cores
         p = Pool(regex_cores)
-        process_outputs = p.map(preprocess_process, lists_q)
-        p.close()
+        process_outputs = p.map(preprocess_process, lists_q)  # Input the questions into a pool map and gather outputs
+        p.close()  # close the pool (releases the works and saves memory)
 
-        questions = list(flatten(process_outputs))
+        questions = list(flatten(process_outputs))  # Flatten the outputs back into a 1D list of strings
 
+        # Do the same for answers
         p = Pool(regex_cores)
         process_outputs = p.map(preprocess_process, lists_a)
         p.close()
-        del lists_q, lists_a, generator_a, generator_q
+        del lists_q, lists_a, generator_a, generator_q  # Delete the objects to save memory later down the line
 
-        answers = list(flatten(process_outputs))
+        answers = list(flatten(process_outputs))  # Flatten the outputs back into a 1D list of strings
         print("Finished Regex")
-    if load == "n":
+    if load == "n":  # If we're not loading the tokenizer then generate this
         print("Starting Tokenizer this may take a while....")
         # Build tokenizer using tfds for both questions and answers
         tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
             questions + answers, target_vocab_size=TARGET_VOCAB_SIZE)
         tokenizer.save_to_file(f"{log_dir}/tokenizer/vocabTokenizer")
-    else:
+    else:  # load the tokenizer
         tokenizer = tfds.deprecated.text.SubwordTextEncoder.load_from_file(tokenizerPath)
         tokenizer.save_to_file(f"{log_dir}/tokenizer/vocabTokenizer")
     print("Done Tokenizer.")
     # Define start and end token to indicate the start and end of a sentence
-    START_TOKEN, END_TOKEN = [tokenizer.vocab_size], [tokenizer.vocab_size + 1]
+    START_TOKEN, END_TOKEN = [tokenizer.vocab_size], [tokenizer.vocab_size + 1]  # Set the START and END tokens
 
     # Vocabulary size plus start and end token
-    VOCAB_SIZE = tokenizer.vocab_size + 2
+    VOCAB_SIZE = tokenizer.vocab_size + 2  # In create the vocab size to account for the start end token
 
 
 # Function the process will be mapped to
@@ -316,54 +321,52 @@ def tokenize(m_length, s_token, e_token, u_tokenizer, train_data):
 
 
 def tokenize_and_filter(inputs, outputs):
-    training_data = list(zip(inputs, outputs))
-    data_gen = chunk(training_data, cores)
-    partial_iter = partial(check_length, MAX_LENGTH)
+    training_data = list(zip(inputs, outputs))  # Zip the inputs and outputs
+    data_gen = chunk(training_data, cores)  # Create the list chunk generator (chunk into how many cores we're using
+    partial_iter = partial(check_length, MAX_LENGTH)  # Use partial iter to give more than 1 argument to Pool.map
 
-    process_pool = Pool(processes=cores)
-    lists = [next(data_gen) for _ in range(cores)]
-    _process_outputs = process_pool.map(partial_iter, lists)
-    process_pool.close()
-    inputs = list(itertools.chain(_process_outputs[0]['inputs'], _process_outputs[2]['inputs'],
-                                  _process_outputs[1]['inputs'], _process_outputs[3]['inputs']))
-    outputs = list(itertools.chain(_process_outputs[0]['outputs'], _process_outputs[2]['outputs'],
-                                   _process_outputs[1]['outputs'], _process_outputs[3]['outputs']))
+    process_pool = Pool(processes=cores)  # Init the pool with workers = to number of cores we set
+    lists = [next(data_gen) for _ in range(cores)]  # Create a 2D list with each list inside being 1 to give to a worker.
+    _process_outputs = process_pool.map(partial_iter, lists)  # Map the function and get outputs
+    process_pool.close()  # close pool to kill workers and save memory
 
-    training_data = list(zip(inputs, outputs))
-    del inputs, outputs
-    data_gen = chunk(training_data, cores)
+    inputs = []  # Set inputs to nothing
+    for i in range(cores):
+        inputs.extend(_process_outputs[i]['inputs'])  # Extend with the outputs from the pool
 
-    partial_iter = partial(tokenize, MAX_LENGTH, START_TOKEN, END_TOKEN, tokenizer)
-    process_pool = Pool(processes=cores)
-    lists = [next(data_gen) for _ in range(cores)]
-    _process_outputs = process_pool.map(partial_iter, lists)
-    process_pool.close()
+    outputs = []  # Set outputs ot nothing
+    for i in range(cores):
+        outputs.extend(_process_outputs[i]['outputs'])  # Extend with the outputs from the pool
 
-    inputs_array = np.concatenate((_process_outputs[0]['inputs'], _process_outputs[2]['inputs'],
-                                   _process_outputs[1]['inputs'], _process_outputs[3]['inputs']))
+    training_data = list(zip(inputs, outputs))  # re-zip the inputs and outputs
+    del inputs, outputs  # Delete the old inputs and outputs to save memory
+    data_gen = chunk(training_data, cores)  # Create a new generator using the new data
+    # Create a 2D list with each list inside being 1 to give to a worker.
+    partial_iter = partial(tokenize, MAX_LENGTH, START_TOKEN, END_TOKEN, tokenizer)  # Use this to pass multiple arguments to pool.map
+    process_pool = Pool(processes=cores)  # Init the pool with workers = to number of cores we set
+    lists = [next(data_gen) for _ in range(cores)]  # Create a 2D list with each list inside being 1 to give to a worker.
+    _process_outputs = process_pool.map(partial_iter, lists)   # Map the function to the lists and return outputs
+    process_pool.close()  # Close pool to kill workers and save memory
 
-    outputs_array = np.concatenate((_process_outputs[0]['outputs'], _process_outputs[2]['outputs'],
-                                    _process_outputs[1]['outputs'], _process_outputs[3]['outputs']))
-    del lists, data_gen
+    inputs_array = np.concatenate((_process_outputs[i]['inputs'] for i in range(cores)))  # Concat the inputs together (similar to .extend used earlier)
 
-    return inputs_array, outputs_array
+    outputs_array = np.concatenate((_process_outputs[i]['outputs'] for i in range(cores)))  # Concat the outputs together (similar to .extend used earlier)
+    del lists, data_gen  # delete old objects to help with memory usage
+
+    return inputs_array, outputs_array  # Return the final arrays
 
 
 if __name__ == "__main__":
     print("Filtering data")
-    questions, answers = tokenize_and_filter(questions, answers)
+    questions, answers = tokenize_and_filter(questions, answers)  # Filter all the data
     print("Done filtering")
-    print(f"Pickling Questions and answers for {name}")
-    questionsMarshal = f"{log_dir}/pickles/{name}_questions.marshal"
-    answersMarshal = f"{log_dir}/pickles/{name}_answers.marshal"
-    save_marshal(questions, questionsMarshal)
-    save_marshal(answers, answersMarshal)
-    print(f"Done saving....")
+
+    # Splits the data into Train and Validation
     questions_train = questions[int(round(len(questions) * .8, 0)):]
     answers_train = answers[int(round(len(answers) * 0.8, 0)):]
     questions_val = questions[:int(round(len(questions) * .2, 0))]
     answers_val = answers[:int(round(len(answers) * .2, 0))]
-    del questions, answers
+    del questions, answers  # Delete the old objects to help with memory
 
     # decoder inputs use the previous target as input
     # remove s_token from targets
@@ -395,12 +398,14 @@ if __name__ == "__main__":
     dataset_val = dataset_val.batch(BATCH_SIZE)
     dataset_val = dataset_val.prefetch(tf.data.experimental.AUTOTUNE)
     print("Done Dataset shuffling, batching and prefetch")
-    # validation_path = f"./{log_dir}/pickles/dataset_validation/"
-    # tf.data.experimental.save(dataset=dataset_val, path=validation_path)
+    train_dataset_path = f"{log_dir}/pickles/train/"
+    validation_dataset_path = f"{log_dir}/pickles/validation/"
+    tf.data.experimental.save(dataset=dataset_val, path=validation_dataset_path, compression="GZIP")
+    tf.data.experimental.save(dataset=dataset_train, path=train_dataset_path, compression="GZIP")  # Save the datasets to be loaded later
 
-    mirrored_strategy = tf.distribute.MirroredStrategy()
+    mirrored_strategy = tf.distribute.MirroredStrategy()   # Use mirrored strategy to use multi gpu
 
-    with mirrored_strategy.scope():
+    with mirrored_strategy.scope():  # Use the mirrored strategy to create the model
         transformer = Transformer(
             vocab_size=VOCAB_SIZE,
             num_layers=NUM_LAYERS,
@@ -562,7 +567,6 @@ if __name__ == "__main__":
     print("Done.")
     print("Starting train....")
 
-    # tf.compat.v1.keras.backend.set_session(tf_debug.TensorBoardDebugWrapperSession(session, "DESKTOP-A17GHDN:8081"))
     model.compile(optimizer=optimizer, loss=loss_function, metrics=['accuracy'])
     with tf.profiler.experimental.Trace("Train"):
         model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS,

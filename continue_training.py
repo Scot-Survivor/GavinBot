@@ -6,7 +6,7 @@ import marshal
 import os
 from concurrent.futures import ThreadPoolExecutor, wait
 from architecture.models import Transformer
-from architecture.callbacks.model_callbacks import EarlyStoppingAtMinLoss, PredictCallback
+from architecture.callbacks.model_callbacks import PredictCallback
 
 config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -80,21 +80,8 @@ def load_files(file1, file2):
         return fut1.result(), fut2.result()
 
 
-print("Importing Question and Answer data. This may take a second...")
-questionsPickle = f"{log_dir}/pickles/{Modelname}_questions.marshal"
-answersPickle = f"{log_dir}/pickles/{Modelname}_answers.marshal"
-questions, answers = load_files(questionsPickle, answersPickle)
-print("Done importing")
-
-answer = input("Would you like to load the tokenizer? y/n\n>")
-if answer == "y":
-    tokenizer = tfds.deprecated.text.SubwordTextEncoder.load_from_file(f"{log_dir}/tokenizer/vocabTokenizer")
-else:
-    print("Starting Tokenizer this may take a while....")
-    # Build tokenizer using tfds for both questions and answers
-    tokenizer = tfds.deprecatedTest.text.SubwordTextEncoder.build_from_corpus(
-        questions + answers, target_vocab_size=TARGET_VOCAB_SIZE)
-    VOCAB_SIZE = tokenizer.vocab_size + 2
+print("Loading Tokenizer.")
+tokenizer = tfds.deprecated.text.SubwordTextEncoder.load_from_file(f"{log_dir}/tokenizer/vocabTokenizer")
 print("Done Tokenizer.")
 
 # Define start and end token to indicate the start and end of a sentence
@@ -113,70 +100,17 @@ swearwords = ['cock', 'tf', 'reggin', 'bellend', 'twat',
               "bullshit", "slut", "fuckin'", "slut"]
 
 
-# Tokenize, filter and pad sentences
-def tokenize_and_filter(inputs, outputs):
-    # Get rid of any inputs/outputs that don't meet the max_length requirement (save the model training on large sentences
-    new_inputs, new_outputs = [], []
-    for i, (sentence1, sentence2) in enumerate(zip(inputs, outputs)):
-        if len(sentence1) <= MAX_LENGTH - 2 and len(sentence2) <= MAX_LENGTH - 2:
-            new_inputs.append(sentence1)
-            new_outputs.append(sentence2)
-    inputs, outputs = new_inputs, new_outputs
-
-    # Init the shapes for the array.
-    shape_inputs = (len(inputs), MAX_LENGTH)
-    shape_outputs = (len(outputs), MAX_LENGTH)
-    # create the empty numpy arrays
-    # Add the start token at the start of all rows
-    inputs_array = np.zeros(shape=shape_inputs)
-    inputs_array[:, 0] = START_TOKEN[0]
-    outputs_array = np.zeros(shape=shape_outputs)
-    outputs_array[:, 0] = START_TOKEN[0]
-    # Iterate over each sentence in both inputs and outputs.
-    for i, (sentence1, sentence2) in enumerate(zip(inputs, outputs)):
-        # encode both sentences
-        tokenized_sentence1 = tokenizer.encode(sentence1)
-        tokenized_sentence2 = tokenizer.encode(sentence2)
-        # This check length doesn't technically matter but its here as a fail safe.
-        if len(tokenized_sentence1) <= MAX_LENGTH -2 and len(tokenized_sentence2) <= MAX_LENGTH -2:
-            # Add the tokenized sentence into array.
-            # This acts as padding for hte
-            inputs_array[i, 1:len(tokenized_sentence1)+1] = tokenized_sentence1
-            inputs_array[i, len(tokenized_sentence1)+1] = END_TOKEN[0]
-
-            outputs_array[i, 1:len(tokenized_sentence2)+1] = tokenized_sentence2
-            inputs_array[i, len(tokenized_sentence2)+1] = END_TOKEN[0]
-
-    return inputs_array, outputs_array
-
-
-questions_train = questions[int(round(len(questions)*.8, 0)):]
-answers_train = answers[int(round(len(answers)*0.8, 0)):]
-questions_val = questions[:int(round(len(questions)*.2, 0))]
-answers_val = answers[:int(round(len(answers)*.2, 0))]
 
 
 # decoder inputs use the previous target as input
 # remove s_token from targets
 print("Beginning Dataset shuffling, batching and prefetch")
-dataset_train = tf.data.Dataset.from_tensor_slices((
-    {
-        'inputs': questions_train,
-        'dec_inputs': answers_train[:, :-1]
-    },
-    {
-        'outputs': answers_train[:, 1:]
-    }
-))
-dataset_val = tf.data.Dataset.from_tensor_slices((
-    {
-        'inputs': questions_val,
-        'dec_inputs': answers_val[:, :-1]
-    },
-    {
-        'outputs': answers_val[:, 1:]
-    }
-))
+train_dataset_path = f"{log_dir}/pickles/train/"
+validation_dataset_path = f"{log_dir}/pickles/validation/"
+dataset_train = tf.data.experimental.load(path=train_dataset_path, element_spec={{'inputs': tf.TensorSpec(shape=(), dtype=tf.float32)}, {'outputs': tf.TensorSpec(shape=(), dtype=tf.float32)}}, compression="GZIP")
+dataset_val = tf.data.experimental.load(path=validation_dataset_path, element_spec={{'inputs': tf.TensorSpec(shape=(), dtype=tf.float32)}, {'outputs': tf.TensorSpec(shape=(), dtype=tf.float32)}}, compression="GZIP")
+
+
 dataset_train = dataset_train.cache()
 dataset_train = dataset_train.shuffle(BUFFER_SIZE)
 dataset_train = dataset_train.batch(BATCH_SIZE)
@@ -311,12 +245,11 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram
                                                       update_freq='epoch')
 predict_callback = PredictCallback(tokenizer=tokenizer, start_token=START_TOKEN, end_token=END_TOKEN, max_length=MAX_LENGTH,
                                        log_dir=log_dir)
-min_callback = EarlyStoppingAtMinLoss(patience=2)
 
 model.summary()
 model.load_weights(checkpoint_path)
 model.compile(optimizer=optimizer, loss=loss_function, metrics=['accuracy'])
 with tf.profiler.experimental.Trace("Train"):
     model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS, callbacks=[cp_callback, tensorboard_callback,
-                                                                                    predict_callback, min_callback],
+                                                                                    predict_callback],
               initial_epoch=INITAL_EPOCH)

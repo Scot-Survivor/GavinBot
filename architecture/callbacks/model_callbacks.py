@@ -11,9 +11,8 @@ class PredictCallback(tf.keras.callbacks.Callback):
         self.START_TOKEN = start_token
         self.END_TOKEN = end_token
         self.MAX_LENGTH = max_length
-        self.prompts = ["Hey?", "Hi?", "Hello.", "Hey.", "How are you?",
-                        "What you doing?", "How are you doing?", "My name is Josh!",
-                        "Nice to meet you!", "What is your name?", "How old are you?"]
+        self.prompts = ["Hey?", "Hi?", "Hello.", "How are you?", "How are you doing?", "My name is Josh.",
+                        "Nice to meet you!", "What is your name?", "How old are you?", "Are you married?"]
         random.shuffle(self.prompts)
         self.log_dir = log_dir
 

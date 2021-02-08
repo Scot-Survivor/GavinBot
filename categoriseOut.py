@@ -1,23 +1,24 @@
 import os
 import sqlite3
 import re
-
 import pandas as pd
 
 from multiprocessing import Pool
 from collections import Iterable
+import glob
 
-timeframes = ['2015-01', '2015-02', '2014-12', '2014-11', '2014-10', '2014-09', '2014-01', '2014-02', '2014-05']
+
+timeframes = glob.glob("D:/Datasets/reddit_data/databases/*.db")
+timeframes = [os.path.basename(timeframe) for timeframe in timeframes]
 
 
 def preprocess_sentence(sentence):
     sentence = sentence.strip()
     # creating a space between a word and the punctuation following it
     # eg: "he is a boy." => "he is a boy ."
-    sentence = re.sub(r"([?.!,'])", r"\1", sentence)
-    sentence = re.sub(r'[" "]+', " ", sentence)
-    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
-    sentence = re.sub(r"[^a-zA-z?.!,']+", " ", sentence)
+    sentence = re.sub(r"([?.!,'*\"])", r" \1 ", sentence)
+    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",", "'")
+    sentence = re.sub(r"[^a-zA-z?.!,'*\"]+", " ", sentence)
     sentence = sentence.strip()
     # adding start and an end token to the sentence
     return sentence
@@ -48,7 +49,7 @@ def flatten(lis):
 
 def sort_out(time_frame):
     for t_frame in time_frame:
-        connection = sqlite3.connect('D:/Datasets/reddit_data/databases/{}.db'.format(t_frame))
+        connection = sqlite3.connect('D:/Datasets/reddit_data/databases/{}'.format(t_frame))
         limit = 1000000
         last_unix = 0
         cur_length = limit

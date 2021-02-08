@@ -3,7 +3,6 @@ import re
 import marshal
 import numpy as np
 from datetime import datetime
-from random import shuffle, randint
 from multiprocessing import Pool
 from functools import partial
 from collections import Iterable
@@ -22,12 +21,13 @@ if __name__ == "__main__":
 
 #  INIT all the variables to avoid "can be undefined" errors.
 path_to_dataset = path_to_movie_conversations = path_to_movie_lines = questions = answers = dataset_train = dataset_val = regex = None
-MAX_SAMPLES = MAX_LENGTH = name = log_dir = load = tokenizerPath = checkpoint_path = tokenizer = optimizer = other_policy = MIXED = None
+MAX_SAMPLES = MAX_LENGTH = name = log_dir = load = tokenizerPath = checkpoint_path = tokenizer = optimizer = other_policy = MIXED = gpus = None
 NUM_LAYERS = D_MODEL = NUM_HEADS = UNITS = DROPOUT = EPOCHS = BATCH_SIZE = BUFFER_SIZE = cores = TARGET_VOCAB_SIZE = VOCAB_SIZE = 0
 reddit_set_max = movie_dialog_max = START_TOKEN = END_TOKEN = regex_cores = 0
 
 if __name__ == "__main__":
     other_policy = 'n'  # input("Do you want to enabled mixed precision? y/n (NOT SUPPORTED YET): ")
+    gpus = tf.config.experimental.list_physical_devices('GPU')
     if other_policy == 'y':
         MIXED = True
         gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     log_dir = "bunchOfLogs/" + name
     BATCH_SIZE = int(input("BATCH_SIZE(32): "))
     BUFFER_SIZE = 20_000
-    MAX_LENGTH = 40 + 2  # Max Length changed back to 40 to save model from useless large information
+    MAX_LENGTH = 50 + 2  # Max Length changed back to 40 to save model from useless large information
 
     # Hyper-parameters
     NUM_LAYERS = int(input("Please enter the number of NUM_LAYERS(4): "))
@@ -75,8 +75,8 @@ if __name__ == "__main__":
     if load == "y":
         tokenizerPath = input("Please enter the path the tokenizer: ")
     regex = input("Do you need to run regex? y/n: ")
-    cores = 4
-    regex_cores = os.cpu_count()
+    cores = int(input("How many cores would you like to use for pre-processing: "))
+    regex_cores = cores
     TARGET_VOCAB_SIZE = 2 ** 14
 
     checkpoint_path = f"{log_dir}/cp.ckpt"
@@ -107,8 +107,7 @@ def preprocess_sentence(sentence):
     sentence = sentence.strip()
     # creating a space between a word and the punctuation following it
     # eg: "he is a boy." => "he is a boy ."
-    sentence = re.sub(r"([?.!,'*])", r" \1 ", sentence)
-    sentence = re.sub(r'["]+', " ", sentence)
+    sentence = re.sub(r"([?.!,'*\"])", r" \1 ", sentence)
     # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",", "'")
     sentence = re.sub(r"[^a-zA-z?.!,'*]+", " ", sentence)
     sentence = sentence.strip()
@@ -188,11 +187,6 @@ def generate_data(max_data, f_path):
     return return_phrases
 
 
-def sort_data(max_data, filepath_one="train.from", filepath_two="train.to"):
-    inputs = generate_data(f_path=filepath_one, max_data=max_data)
-    outputs = generate_data(f_path=filepath_two, max_data=max_data)
-    return inputs, outputs
-
 
 def file_generator(f_path):
     with open(f_path, "r", encoding="utf8", buffering=10000) as file:
@@ -232,10 +226,6 @@ if __name__ == "__main__":
     questions, answers = load_conversations(reddit_set_max, movie_dialog_max)
     print(f"Answers: {len(answers)}\nQuestions: {len(questions)}")
     # questions, answers = sort_data(reddit_set_max)
-    shuffleThis = list(zip(questions, answers))
-    for x in range(randint(0, 4)):
-        shuffle(shuffleThis)
-    questions, answers = zip(*shuffleThis)
     print("Done loading...")
     if regex == "y":  # If we're running the regex do this.
         print("Starting Regex....")
@@ -321,52 +311,68 @@ def tokenize(m_length, s_token, e_token, u_tokenizer, train_data):
 
 
 def tokenize_and_filter(inputs, outputs):
-    training_data = list(zip(inputs, outputs))  # Zip the inputs and outputs
-    data_gen = chunk(training_data, cores)  # Create the list chunk generator (chunk into how many cores we're using
-    partial_iter = partial(check_length, MAX_LENGTH)  # Use partial iter to give more than 1 argument to Pool.map
+    training_data = list(zip(inputs, outputs))
+    data_gen = chunk(training_data, cores)
 
-    process_pool = Pool(processes=cores)  # Init the pool with workers = to number of cores we set
-    lists = [next(data_gen) for _ in range(cores)]  # Create a 2D list with each list inside being 1 to give to a worker.
-    _process_outputs = process_pool.map(partial_iter, lists)  # Map the function and get outputs
-    process_pool.close()  # close pool to kill workers and save memory
+    partial_iter = partial(check_length, MAX_LENGTH)
 
-    inputs = []  # Set inputs to nothing
+    process_pool = Pool(processes=cores)
+
+    lists = [next(data_gen) for _ in range(cores)]
+
+    _process_outputs = process_pool.map(partial_iter, lists)
+    process_pool.close()
+
+    inputs = []
     for i in range(cores):
-        inputs.extend(_process_outputs[i]['inputs'])  # Extend with the outputs from the pool
+        inputs.extend(_process_outputs[i]['inputs'])
 
-    outputs = []  # Set outputs ot nothing
+    outputs = []
     for i in range(cores):
-        outputs.extend(_process_outputs[i]['outputs'])  # Extend with the outputs from the pool
+        outputs.extend(_process_outputs[i]['outputs'])
 
-    training_data = list(zip(inputs, outputs))  # re-zip the inputs and outputs
-    del inputs, outputs  # Delete the old inputs and outputs to save memory
-    data_gen = chunk(training_data, cores)  # Create a new generator using the new data
-    # Create a 2D list with each list inside being 1 to give to a worker.
-    partial_iter = partial(tokenize, MAX_LENGTH, START_TOKEN, END_TOKEN, tokenizer)  # Use this to pass multiple arguments to pool.map
-    process_pool = Pool(processes=cores)  # Init the pool with workers = to number of cores we set
-    lists = [next(data_gen) for _ in range(cores)]  # Create a 2D list with each list inside being 1 to give to a worker.
-    _process_outputs = process_pool.map(partial_iter, lists)   # Map the function to the lists and return outputs
-    process_pool.close()  # Close pool to kill workers and save memory
+    # Do the same but tokenizer everything instead of check length
+    training_data = list(zip(inputs, outputs))
+    del inputs, outputs
+    data_gen = chunk(training_data, cores)
 
-    inputs_array = np.concatenate((_process_outputs[i]['inputs'] for i in range(cores)))  # Concat the inputs together (similar to .extend used earlier)
+    partial_iter = partial(tokenize, MAX_LENGTH, START_TOKEN, END_TOKEN, tokenizer)
+    process_pool = Pool(processes=cores)
+    lists = [next(data_gen) for _ in range(cores)]
+    _process_outputs = process_pool.map(partial_iter, lists)
+    process_pool.close()
 
-    outputs_array = np.concatenate((_process_outputs[i]['outputs'] for i in range(cores)))  # Concat the outputs together (similar to .extend used earlier)
-    del lists, data_gen  # delete old objects to help with memory usage
+    # inputs_array = np.concatenate((_process_outputs[i]['inputs'] for i in range(cores)))
+    inputs_array = _process_outputs[0]['inputs']
+    for i in range(cores-2):
+        inputs_array = np.append(inputs_array, _process_outputs[i+1]['inputs'], axis=0)
 
-    return inputs_array, outputs_array  # Return the final arrays
+    # outputs_array = np.concatenate((_process_outputs[i]['outputs'] for i in range(cores)))
+    outputs_array = _process_outputs[0]['outputs']
+    for i in range(cores-2):
+        outputs_array = np.append(outputs_array, _process_outputs[i+1]['outputs'], axis=0)
+    del lists, data_gen
+
+    return inputs_array, outputs_array
 
 
 if __name__ == "__main__":
+    mirrored_strategy = tf.distribute.MirroredStrategy()  # Use mirrored strategy to use multi gpu
     print("Filtering data")
     questions, answers = tokenize_and_filter(questions, answers)  # Filter all the data
     print("Done filtering")
+    print(f"Pickling Questions and answers for {name}")
+    questionsMarshal = f"{log_dir}/pickles/{name}_questions.marshal"
+    answersMarshal = f"{log_dir}/pickles/{name}_answers.marshal"
+    save_marshal(questions, questionsMarshal)
+    save_marshal(answers, answersMarshal)
+    print(f"Done saving....")
 
-    # Splits the data into Train and Validation
     questions_train = questions[int(round(len(questions) * .8, 0)):]
     answers_train = answers[int(round(len(answers) * 0.8, 0)):]
     questions_val = questions[:int(round(len(questions) * .2, 0))]
     answers_val = answers[:int(round(len(answers) * .2, 0))]
-    del questions, answers  # Delete the old objects to help with memory
+    del questions, answers
 
     # decoder inputs use the previous target as input
     # remove s_token from targets
@@ -397,13 +403,16 @@ if __name__ == "__main__":
     dataset_val = dataset_val.shuffle(BUFFER_SIZE)
     dataset_val = dataset_val.batch(BATCH_SIZE)
     dataset_val = dataset_val.prefetch(tf.data.experimental.AUTOTUNE)
-    print("Done Dataset shuffling, batching and prefetch")
+    options = tf.data.Options()
+    options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    dataset_train.with_options(options)
+    dataset_val.with_options(options)
     train_dataset_path = f"{log_dir}/pickles/train/"
     validation_dataset_path = f"{log_dir}/pickles/validation/"
     tf.data.experimental.save(dataset=dataset_val, path=validation_dataset_path, compression="GZIP")
-    tf.data.experimental.save(dataset=dataset_train, path=train_dataset_path, compression="GZIP")  # Save the datasets to be loaded later
-
-    mirrored_strategy = tf.distribute.MirroredStrategy()   # Use mirrored strategy to use multi gpu
+    tf.data.experimental.save(dataset=dataset_train, path=train_dataset_path,
+                              compression="GZIP")  # Save the datasets to be loaded later
+    print("Done Dataset shuffling, batching and prefetch")
 
     with mirrored_strategy.scope():  # Use the mirrored strategy to create the model
         transformer = Transformer(

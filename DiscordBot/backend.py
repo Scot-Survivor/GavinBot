@@ -2,7 +2,8 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 import re
 
-from architecture.models import Transformer
+from GavinBackend.models import Transformer
+from GavinBackend.functions import evaluate
 
 config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -72,18 +73,6 @@ def load_model(checkpoint_name):
     return START_TOKEN, END_TOKEN, tokenizer, MAX_LENGTH, model, ModelName, hparams
 
 
-def preprocess_sentence(sentence):
-    # creating a space between a word and the punctuation following it
-    # eg: "he is a boy." => "he is a boy ."
-    sentence = re.sub(r"([?.!,'])", r"\1", sentence)
-    sentence = re.sub(r"[^a-zA-Z?.!,']+", " ", sentence)
-    # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
-    sentence = re.sub(r"[^a-zA-z?.!,']+", " ", sentence)
-    sentence = sentence.strip()
-    # adding start and an end token to the sentence
-    return sentence
-
-
 def checkSwear(sentence, swearwords):
     listSentence = sentence.split()
     listSentenceClean = []
@@ -102,27 +91,6 @@ def checkSwear(sentence, swearwords):
             # print(listSentenceClean)
     listSentenceClean = " ".join(listSentenceClean)
     return listSentenceClean
-
-
-def evaluate(sentence, s_token, e_token, tokenizer, max_len, model):
-    sentence = preprocess_sentence(sentence)
-
-    sentence = tf.expand_dims(s_token + tokenizer.encode(sentence) + e_token, axis=0)
-    output = tf.expand_dims(s_token, 0)
-
-    for i in range(max_len):
-        predictions = model(inputs=[sentence, output], training=False)
-
-        # select the last word from the seq length dimension
-        predictions = predictions[:, -1:, :]
-        predicted_id = tf.cast(tf.argmax(predictions, axis=-1), tf.int32)
-
-        if tf.equal(predicted_id, e_token[0]):
-            break
-        # concatenated the predicted_id to the output which is given the decoder
-        # as its input
-        output = tf.concat([output, predicted_id], axis=-1)
-    return tf.squeeze(output, axis=0)
 
 
 def predict(sentence, tokenizer, swear_words, start_token, end_token, max_len, model):

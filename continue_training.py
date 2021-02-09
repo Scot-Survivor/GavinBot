@@ -5,8 +5,8 @@ import re
 import marshal
 import os
 from concurrent.futures import ThreadPoolExecutor, wait
-from architecture.models import Transformer
-from architecture.callbacks.model_callbacks import PredictCallback
+from GavinBackend.models import Transformer
+from GavinBackend.callbacks.model_callbacks import PredictCallback
 
 config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True

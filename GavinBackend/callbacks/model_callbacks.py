@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
-import re
 import random
+from GavinBackend.preprocessing.text import preprocess_sentence
 
 
 class PredictCallback(tf.keras.callbacks.Callback):
@@ -21,7 +21,7 @@ class PredictCallback(tf.keras.callbacks.Callback):
         self.past_logs = []
 
     def _evaluate(self, sentence):
-        sentence = self._preprocess_sentence(sentence)
+        sentence = preprocess_sentence(sentence)
 
         sentence = tf.expand_dims(self.START_TOKEN + self.tokenizer.encode(sentence) + self.END_TOKEN, axis=0)
 
@@ -41,18 +41,6 @@ class PredictCallback(tf.keras.callbacks.Callback):
             # as its input
             output = tf.concat([output, predicted_id], axis=-1)
         return tf.squeeze(output, axis=0)
-
-    @staticmethod
-    def _preprocess_sentence(sentence):
-        # creating a space between a word and the punctuation following it
-        # eg: "he is a boy." => "he is a boy ."
-        sentence = re.sub(r"([?.!,'])", r"\1", sentence)
-        sentence = re.sub(r'[" "]+', " ", sentence)
-        # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",")
-        sentence = re.sub(r"[^a-zA-z?.!,']+", " ", sentence)
-        sentence = sentence.strip()
-        # adding start and an end token to the sentence
-        return sentence
 
     def _predict(self):
         predictions = []

@@ -278,7 +278,7 @@ if __name__ == "__main__":
     model.compile(optimizer=optimizer, loss=gbf.loss_function, metrics=['accuracy'])
     with tf.profiler.experimental.Trace("Train"):
         model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS,
-                  callbacks=[cp_callback, tensorboard_callback, predict_callback], use_multiprocessing=True)
+                  callbacks=[cp_callback, predict_callback, tensorboard_callback], use_multiprocessing=True)
     print(log)
     print(linebreak)
     model.summary()

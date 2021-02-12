@@ -1,8 +1,7 @@
-import tensorflow as tf
 import tensorflow_datasets as tfds
 import re
 
-from GavinBackend.models import Transformer
+from GavinBackend.models import Transformer, tf
 from GavinBackend.functions import evaluate
 
 config = tf.compat.v1.ConfigProto()

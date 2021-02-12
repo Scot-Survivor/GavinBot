@@ -128,6 +128,11 @@ Output: {response}""")
         else:
             await ctx.send(file=picture)
 
+    @commands.command(name="invite", aliases=['inv'])
+    async def send_invite(self, ctx: commands.Context):
+        """Send the bots invite link"""
+        await ctx.send(f"You can add me here!\nhttps://discord.com/api/oauth2/authorize?client_id=753611486999478322&permissions=378944&scope=bot")
+
 
 def setup(bot):
     bot.add_cog(Gavin(bot))

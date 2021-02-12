@@ -73,11 +73,10 @@ class Transformer:
         padding_mask = tf.keras.Input(shape=(1, 1, None), name="padding_mask")
 
         attention = MultiHeadAttention(
-            self.d_model, self.num_heads, name="attention")({
-                'query': inputs,
-                'key': inputs,
-                'value': inputs,
-                'mask': padding_mask})
+            self.d_model, self.num_heads, name="attention")({'query': inputs,
+                                                             'key': inputs,
+                                                             'value': inputs,
+                                                             'mask': padding_mask})
         attention = tf.keras.layers.Dropout(rate=self.dropout)(attention)
         attention = tf.keras.layers.LayerNormalization(
             epsilon=1e-6)(inputs + attention)
@@ -146,20 +145,18 @@ class Transformer:
         padding_mask = tf.keras.Input(shape=(1, 1, None), name='padding_mask')
 
         attention1 = MultiHeadAttention(
-            self.d_model, self.num_heads, name="attention_1")(inputs={
-                'query': inputs,
-                'key': inputs,
-                'value': inputs,
-                'mask': look_ahead_mask})
+            self.d_model, self.num_heads, name="attention_1")(inputs={'query': inputs,
+                                                                      'key': inputs,
+                                                                      'value': inputs,
+                                                                      'mask': look_ahead_mask})
         attention1 = tf.keras.layers.LayerNormalization(
             epsilon=1e-6)(attention1 + inputs)
 
         attention2 = MultiHeadAttention(
-            self.d_model, self.num_heads, name="attention_2")(inputs={
-                'query': attention1,
-                'key': enc_outputs,
-                'value': enc_outputs,
-                'mask': padding_mask})
+            self.d_model, self.num_heads, name="attention_2")(inputs={'query': attention1,
+                                                                      'key': enc_outputs,
+                                                                      'value': enc_outputs,
+                                                                      'mask': padding_mask})
         attention2 = tf.keras.layers.Dropout(rate=self.dropout)(attention2)
         attention2 = tf.keras.layers.LayerNormalization(
             epsilon=1e-6)(attention2 + attention1)
@@ -195,9 +192,66 @@ class Transformer:
 
         for i in range(self.num_layers):
             outputs = self.decoder_layer(name='decoder_layer_{}'.format(i),
-            )(inputs=[outputs, enc_outputs, look_ahead_mask, padding_mask])
+                                         )(inputs=[outputs, enc_outputs, look_ahead_mask, padding_mask])
 
         return tf.keras.Model(
             inputs=[inputs, enc_outputs, look_ahead_mask, padding_mask],
             outputs=outputs,
             name=name)
+
+
+# Source: https://www.cs.princeton.edu/sites/default/files/austin_wang_spring_2019.pdf
+# Different architecture that includes a Convolution network.
+class CometTransformer(Transformer):
+    """Comet Transformer Architecture inherits from Transformer"""
+    def __init__(self, vocab_size: int, num_layers: int, units: int, d_model: int, num_heads: int, dropout: float,
+                 name="comet_transformer", mixed=False, **kwargs):
+        super(CometTransformer, self).__init__(vocab_size, num_layers, units, d_model, num_heads, dropout, name, mixed,
+                                               **kwargs)
+
+    def encoder_layer(self, name="encoder_layer"):
+        """Encoder Layer
+        Arguments:
+            :arg name: str
+                The name for the layer, returned in model.summary()
+        """
+        inputs = tf.keras.Input(shape=(None, self.d_model), name="inputs")
+        padding_mask = tf.keras.Input(shape=(1, 1, None), name="padding_mask")
+
+        attention = MultiHeadAttention(
+            self.d_model, self.num_heads, name="attention")({'query': inputs,
+                                                             'key': inputs,
+                                                             'value': inputs,
+                                                             'mask': padding_mask})
+        attention = tf.keras.layers.Dropout(rate=self.dropout)(attention)
+        attention = tf.keras.layers.LayerNormalization(
+            epsilon=1e-6)(inputs + attention)
+
+        ffn1 = tf.keras.layers.Dense(units=self.units, activation='relu')(attention)
+        ffn1 = tf.keras.layers.Dense(units=self.d_model)(ffn1)
+        ffn1 = tf.keras.layers.Dropout(rate=self.dropout)(ffn1)
+        ffn1 = tf.keras.layers.LayerNormalization(
+            epsilon=1e-6)(attention + ffn1)
+
+        outputs = self.conv_unit(ffn1)
+
+        return tf.keras.Model(
+            inputs=[inputs, padding_mask], outputs=outputs, name=name)
+
+    def conv_unit(self, x):
+        F1, F2, F3 = self.multi_layer_conv(x)
+        concat = tf.concat([F1, F2, F3, x], axis=1)
+
+        outputs = tf.keras.layers.Dense(units=self.units, activation='relu')(concat)
+        outputs = tf.keras.layers.Dense(units=self.d_model)(outputs)
+        outputs = tf.keras.layers.Dropout(rate=self.dropout)(outputs)
+        outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(concat + outputs)
+
+        return outputs
+
+    @staticmethod
+    def multi_layer_conv(x):
+        F1 = tf.keras.layers.BatchNormalization()(x)
+        F2 = tf.keras.layers.BatchNormalization()(F1)
+        F3 = tf.keras.layers.BatchNormalization()(F2)
+        return F1, F2, F3

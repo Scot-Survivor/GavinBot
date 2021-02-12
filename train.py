@@ -14,7 +14,7 @@ if __name__ == "__main__":
     from tensorflow.keras.utils import plot_model
     from tensorflow.keras.mixed_precision import experimental as mixed_precision
     from tensorboard.plugins import projector
-    from GavinBackend.models import Transformer, tf
+    from GavinBackend.models import Transformer, tf, CometTransformer
     from GavinBackend.callbacks.model_callbacks import PredictCallback
     # from keras.preprocessing.text import Tokenizer  Different Tokenizer.
 
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     # noinspection PyAbstractClass,PyShadowingNames
     class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
-        def __init__(self, d_model, warmup_steps=4000):
+        def __init__(self, d_model, warmup_steps=5000):
             super(CustomSchedule, self).__init__()
 
             self.d_model = d_model
@@ -207,7 +207,7 @@ if __name__ == "__main__":
 
     learning_rate = CustomSchedule(D_MODEL)
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+    optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.91, beta_2=0.98, epsilon=1e-9)
 
     print("Writing metadata")
 
@@ -268,8 +268,7 @@ if __name__ == "__main__":
             f.write(f"Image error: {e}")
             print(f"Image error: {e}")
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch="510, 520",
-                                                          update_freq='epoch')
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch="510, 520")
     predict_callback = PredictCallback(tokenizer=tokenizer, start_token=START_TOKEN, end_token=END_TOKEN, max_length=MAX_LENGTH,
                                        log_dir=log_dir)
     print("Done.")

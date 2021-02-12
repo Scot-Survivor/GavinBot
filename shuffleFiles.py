@@ -29,13 +29,13 @@ class CustomRandom(Random):
 
 
 def readFile(file):
-    with open(f"{file}", "r", encoding="utf8") as file:
+    with open(f"D:\\Datasets\\reddit_data\\files\\{file}", "r", encoding="utf8") as file:
         lines = file.readlines()
     return lines
 
 
 def writeFile(file, data):
-    with open(f"{file}", "w", encoding="utf8") as f:
+    with open(f"D:\\Datasets\\reddit_data\\files\\{file}", "w", encoding="utf8") as f:
         for i in tqdm(range(len(data)), desc=f"{file}", total=len(data)):
             f.write(data[i])
         f.close()

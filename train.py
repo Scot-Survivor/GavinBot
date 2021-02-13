@@ -139,11 +139,11 @@ if __name__ == "__main__":
     print("Beginning Dataset shuffling, batching and prefetch")
     dataset_train = tf.data.Dataset.from_tensor_slices((
         {
-            'inputs': questions_train,
-            'dec_inputs': answers_train[:, :-1]
+            'inputs': questions_train,  # Source
+            'dec_inputs': answers_train[:, :-1]  # Targets
         },
         {
-            'outputs': answers_train[:, 1:]
+            'outputs': answers_train[:, 1:]  # Outputs
         }
     ))
     dataset_val = tf.data.Dataset.from_tensor_slices((

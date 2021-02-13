@@ -1,0 +1,10 @@
+This File contains Papers and Sources used for parts of the code.
+
+"REFORMER: THE EFFICIENT TRANSFORMER": https://arxiv.org/pdf/2001.04451.pdf
+"Practical and Optimal LSH for Angular Distance": https://arxiv.org/pdf/1509.02897.pdf
+"When and Why is Document-level Context Useful in Neural Machine Translation?": https://arxiv.org/pdf/1910.00294.pdf
+"Attention Is All You Need": https://arxiv.org/pdf/1706.03762.pdf
+"Improved Transformer Architecture for Sequence to Sequence Translation": https://www.cs.princeton.edu/sites/default/files/austin_wang_spring_2019.pdf
+"Combining Local and Document-Level Context: The LMU Munich Neural Machine Translation System at WMT19": https://www.aclweb.org/anthology/W19-5345.pdf
+"Improving the Transformer Translation Model with Document-Level Context": https://arxiv.org/pdf/1810.03581.pdf
+"Illustrating The Reformer": https://towardsdatascience.com/illustrating-the-reformer-393575ac6ba0

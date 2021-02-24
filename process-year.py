@@ -1,5 +1,5 @@
 import os
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 year = input("Enter the year: ")
 processes = int(input("How many files to be processed at once?: "))
@@ -12,6 +12,6 @@ def run(filename):
     print(f"{filename} Finished")
 
 
-for count, file in enumerate(files):
-    t = threading.Thread(target=run, args=(file, ))
-    t.start()
+with ThreadPoolExecutor(processes) as executor:
+    for file in files:
+        executor.submit(run, file)

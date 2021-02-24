@@ -5,11 +5,13 @@ import pandas as pd
 
 from multiprocessing import Pool
 from collections import Iterable
+from random import shuffle
 import glob
 
 
 timeframes = glob.glob("D:/Datasets/reddit_data/databases/*.db")
 timeframes = [os.path.basename(timeframe) for timeframe in timeframes]
+shuffle(timeframes)  # Shuffle the order in which the time frames are processed
 
 
 def preprocess_sentence(sentence):

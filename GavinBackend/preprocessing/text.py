@@ -5,11 +5,16 @@ def preprocess_sentence(sentence):
     sentence = sentence.strip()
     # creating a space between a word and the punctuation following it
     # eg: "he is a boy." => "he is a boy ."
-    sentence = re.sub(r"([?.!,'*\"])", r" \1 ", sentence)
+    sentence = re.sub(r"([?.!,'*\":@])", r" \1 ", sentence)
     # replacing everything with space except (a-z, A-Z, ".", "?", "!", ",", "'")
-    sentence = re.sub(r"[^a-zA-z?.!,'*]+", " ", sentence)
+    sentence = re.sub(r"[^a-zA-z?.!,'*:\"@]+", " ", sentence)
     sentence = sentence.strip()
     # adding start and an end token to the sentence
+    return sentence
+
+
+def preprocess_context(sentence):
+    sentence = re.sub(r"[^a-zA-Z ]+", "", sentence)
     return sentence
 
 
@@ -31,10 +36,19 @@ def load_conversations(reddit_set_max, movie_dialog_max, path_to_movie_lines, pa
             # get the conversation in a list of line ID
             conversation = [line2[1:-1] for line2 in parts[3][1:-1].split(', ')]
             for i in range(len(conversation) - 1):
-                inputs.append(preprocess_sentence(id2line[conversation[i]]))
-                outputs.append(preprocess_sentence(id2line[conversation[i + 1]]))
+                outputs.append(preprocess_sentence(id2line[conversation[i]]))
+                inputs.append(preprocess_sentence(id2line[conversation[i + 1]]))
                 if len(inputs) >= movie_dialog_max:
                     break
+    if reddit_set_max + movie_dialog_max >= 1_000_000:
+        with open("D:\\Datasets\\Humour\\humourQ.txt", "r") as f:
+            for line in f:
+                inputs.append(preprocess_sentence(line))
+                reddit_set_max -= 1
+        with open(f"D:\\Datasets\\Humour\\humourA.txt", "r") as f:
+            for line in f:
+                outputs.append(preprocess_sentence(line.capitalize()))
+                reddit_set_max -= 1
 
     with open("D:\\Datasets\\reddit_data\\files\\train.from", "r", encoding="utf8", buffering=1000) as file:
         newline = " newlinechar "

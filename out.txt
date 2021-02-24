@@ -1,6 +1,12 @@
+partial_iter = partial(tokenize_context, max_len, s_token, e_token, tokenizer)
+    process_pool = Pool(processes=cores)
+    lists = [next(data_gen_context) for _ in range(cores)]
+    _process_outputs = process_pool.map(partial_iter, lists)
 
-Last unix: 1424105046
-Last unix: 1426470833
-Last unix: 1428075729
-Last unix: 1425405763
-Last unix: 1422981545
+    context_array = _process_outputs[0]
+    for i in range(cores-2):
+        context_array = np.append(context_array, _process_outputs[i+1], axis=0)
+    del data_gen, lists
+
+
+

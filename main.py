@@ -126,10 +126,18 @@ if __name__ == "__main__":
     mirrored_strategy = tf.distribute.MirroredStrategy()  # Use mirrored strategy to use multi gpu
     print("Filtering data")
     if MODEL_TYPE.lower() == "dlc":
-        context = gbpt.tokenize_and_filter_dlc(context=questions, cores=cores, max_len=MAX_LENGTH, s_token=START_TOKEN, e_token=END_TOKEN, tokenizer=tokenizer)
+        context = gbpt.tokenize_and_filter_dlc(context=questions+answers, cores=cores, max_len=MAX_LENGTH, s_token=START_TOKEN, e_token=END_TOKEN, tokenizer=tokenizer)
         questions, answers = gbpt.tokenize_and_filter(questions, answers, cores, MAX_LENGTH, START_TOKEN, END_TOKEN, tokenizer)
         print(f"Answers: {len(answers)}\nQuestions: {len(questions)}")
+        context = context[0: len(questions)]
         print("Dont Filtering")
+        sizes = (len(questions), len(answers), len(context))
+        questions_train = questions[0: int(sizes[0] * .80)]
+        questions_val = questions[int(sizes[0] * 0.80):]
+        answers_train = answers[0: int(sizes[1] * .80)]
+        answers_val = answers[int(sizes[1] * .80):]
+        context_train = context[0: int(sizes[2] * .80)]
+        context_val = context[int(sizes[2] * .8):]
 
         # decoder inputs use the previous target as input
         # remove s_token from targets amd context
@@ -137,12 +145,22 @@ if __name__ == "__main__":
         print("Beginning Dataset shuffling, batching and prefetch")
         dataset_train = tf.data.Dataset.from_tensor_slices((
             {
-                'inputs': questions,  # Source
-                'dec_inputs': answers[:, :-1],  # Targets
-                'context_inputs': context[:, :-1]  # Context
+                'inputs': questions_train,  # Source
+                'dec_inputs': answers_train[:, :-1],  # Targets
+                'context_inputs': context_train  # Context
             },
             {
-                'outputs': answers[:, 1:]  # Outputs
+                'outputs': answers_train[:, 1:]  # Outputs
+            }
+        ))
+        dataset_val = tf.data.Dataset.from_tensor_slices((
+            {
+                'inputs': questions_val,  # Source
+                'dec_inputs': answers_val[:, :-1],  # Targets
+                'context': context_val  # Context
+            },
+            {
+                'outputs': answers_val[:, 1:]  # Outputs
             }
         ))
         dataset_train = dataset_train.cache()

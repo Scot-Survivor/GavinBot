@@ -213,7 +213,7 @@ class DocumentLevelContextTransformer(Transformer):
         self.dropout = dropout
         self._model_name = name
         inputs = tf.keras.Input(shape=(None,), name="inputs")
-        dec_inputs = tf.keras.Input(shape=(None,), name="dec_inputs`")
+        dec_inputs = tf.keras.Input(shape=(None,), name="dec_inputs")
         context_inputs = tf.keras.Input(shape=(None,), name="context_inputs")
 
         enc_padding_mask = tf.keras.layers.Lambda(
@@ -264,7 +264,7 @@ class DocumentLevelContextTransformer(Transformer):
         context_inputs = tf.keras.Input(shape=(None,), name="context_inputs")
         context_padding_mask = tf.keras.Input(shape=(1, 1, None), name='context_padding_mask')
 
-        attention = MultiHeadAttention(d_model=self.d_model, num_heads=self.num_heads, name="Context Attention")(
+        attention = MultiHeadAttention(d_model=self.d_model, num_heads=self.num_heads, name="ContextAttention")(
             inputs={'query': context_inputs,
                     'key': context_inputs,
                     'value': context_inputs,

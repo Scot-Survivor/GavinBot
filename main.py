@@ -121,7 +121,7 @@ if __name__ == "__main__":
     print(f"Pickling Questions and answers for {name}")
     questionsMarshal = f"{log_dir}/pickles/{name}_questions.marshal"
     answersMarshal = f"{log_dir}/pickles/{name}_answers.marshal"
-    # gbpc.save_files(questions, answers, questionsMarshal, answersMarshal)
+    gbpc.save_files(questions, answers, questionsMarshal, answersMarshal)
     print(f"Done saving....")
     mirrored_strategy = tf.distribute.MirroredStrategy()  # Use mirrored strategy to use multi gpu
     print("Filtering data")
@@ -326,7 +326,7 @@ if __name__ == "__main__":
             f.write(f"Image error: {e}")
             print(f"Image error: {e}")
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch="510, 520")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch="500, 600")
     predict_callback = PredictCallback(tokenizer=tokenizer, start_token=START_TOKEN, end_token=END_TOKEN, max_length=MAX_LENGTH,
                                        log_dir=log_dir)
     print("Done.")

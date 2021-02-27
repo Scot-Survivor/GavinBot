@@ -94,7 +94,7 @@ if __name__ == "__main__":
         reddit_set_max = int(input("Please enter a valid number. The movie dialog only has 600k samples: "))
 
     print("Loading files...")
-    questions, answers = gbpte.load_conversations(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations)
+    questions, answers = gbpte.load_data(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations)
     print(f"Answers: {len(answers)}\nQuestions: {len(questions)}")
     print("Done loading...")
 

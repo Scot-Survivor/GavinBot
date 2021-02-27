@@ -92,10 +92,10 @@ if __name__ == "__main__":
     while reddit_set_max > MAX_SAMPLES or None:
         reddit_set_max = int(input("Please enter a valid number\n>"))
     if movie_dialog_max > 600000:
-        reddit_set_max = int(input("Please enter a valid number. The movie dialog only has 600k samples: "))
+        movie_dialog_max = int(input("Please enter a valid number. The movie dialog only has 600k samples: "))
 
     print("Loading files...")
-    questions, answers, LINES_READ = gbpte.load_conversations(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations)
+    questions, answers= gbpte.load_data(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations)
     print("Done loading...")
 
     if regex == "y":  # If we're running the regex do this.
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     print(f"Pickling Questions and answers for {name}")
     questionsMarshal = f"{log_dir}/pickles/{name}_questions.marshal"
     answersMarshal = f"{log_dir}/pickles/{name}_answers.marshal"
-    gbpc.save_files(questions, answers, questionsMarshal, answersMarshal)
+    # gbpc.save_files(questions, answers, questionsMarshal, answersMarshal)
     print(f"Done saving....")
     mirrored_strategy = tf.distribute.MirroredStrategy()  # Use mirrored strategy to use multi gpu
     print("Filtering data")
@@ -314,7 +314,7 @@ if __name__ == "__main__":
 {str(DROPOUT)}
 {str(VOCAB_SIZE)}
 {str(TARGET_VOCAB_SIZE)}
-{str(LINES_READ)}
+{str(reddit_set_max - movie_dialog_max - 100_000)}
     """
         f.write(data)
         f.close()

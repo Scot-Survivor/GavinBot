@@ -19,7 +19,7 @@ def preprocess_context(sentence):
 
 
 # noinspection PyShadowingNames,PyPep8Naming
-def load_conversations(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations):
+def load_data(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations):
     id2line = {}
     inputs, outputs = [], []
     reddit_line = 0
@@ -73,5 +73,5 @@ def load_conversations(reddit_set_max, movie_dialog_max, path_to_movie_lines, pa
                 file.close()
                 return inputs, outputs
         file.close()
-    return inputs, outputs, reddit_line
+    return inputs, outputs
 

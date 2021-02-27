@@ -95,7 +95,7 @@ if __name__ == "__main__":
         reddit_set_max = int(input("Please enter a valid number. The movie dialog only has 600k samples: "))
 
     print("Loading files...")
-    questions, answers = gbpte.load_conversations(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations)
+    questions, answers, LINES_READ = gbpte.load_conversations(reddit_set_max, movie_dialog_max, path_to_movie_lines, path_to_movie_conversations)
     print("Done loading...")
 
     if regex == "y":  # If we're running the regex do this.
@@ -314,6 +314,7 @@ if __name__ == "__main__":
 {str(DROPOUT)}
 {str(VOCAB_SIZE)}
 {str(TARGET_VOCAB_SIZE)}
+{str(LINES_READ)}
     """
         f.write(data)
         f.close()

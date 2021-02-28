@@ -55,8 +55,8 @@ if __name__ == "__main__":
     name = input("Please enter a ModelName for this train: ")
     log_dir = "bunchOfLogs/" + name
     BATCH_SIZE = int(input("BATCH_SIZE(32): "))
-    BUFFER_SIZE = 20_000
-    MAX_LENGTH = 200 + 2
+    BUFFER_SIZE = 40_000
+    MAX_LENGTH = 100 + 2
 
     # Hyper-parameters
     NUM_LAYERS = int(input("Please enter the number of NUM_LAYERS(4): "))
